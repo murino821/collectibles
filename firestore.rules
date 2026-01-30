@@ -1,0 +1,199 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =============================================
+    // HELPER FUNCTIONS
+    // =============================================
+
+    // Check if user is admin
+    function isAdmin() {
+      return request.auth != null &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // =============================================
+    // RATE LIMITING FUNCTIONS
+    // =============================================
+
+    // Check write rate limit - max 10 writes per minute per user
+    // Uses a rateLimit document that tracks last write timestamp
+    function isWithinWriteRateLimit() {
+      let rateLimitDoc = get(/databases/$(database)/documents/rateLimits/$(request.auth.uid));
+      // If no rate limit doc exists, allow (first write)
+      return !exists(/databases/$(database)/documents/rateLimits/$(request.auth.uid))
+             // Or if last write was more than 6 seconds ago (10 per minute = 1 per 6 sec)
+             || rateLimitDoc.data.lastWrite < request.time - duration.value(6, 's');
+    }
+
+    // =============================================
+    // DATA VALIDATION FUNCTIONS
+    // =============================================
+
+    // Validate card data on create/update
+    function isValidCard() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['item', 'userId', 'status'])
+             && data.item is string
+             && data.item.size() > 0
+             && data.item.size() <= 500
+             && data.userId is string
+             && data.status in ['zbierka', 'predane', 'wishlist']
+             // Prevent massive note fields (max 2000 chars)
+             && (!('note' in data) || data.note.size() <= 2000)
+             // Prevent massive imageUrl (max 1000 chars)
+             && (!('imageUrl' in data) || data.imageUrl == null || data.imageUrl.size() <= 1000)
+             // Validate price fields are reasonable (max 10 million)
+             && (!('buy' in data) || data.buy == null || (data.buy >= 0 && data.buy <= 10000000))
+             && (!('current' in data) || data.current == null || (data.current >= 0 && data.current <= 10000000))
+             && (!('sell' in data) || data.sell == null || (data.sell >= 0 && data.sell <= 10000000));
+    }
+
+    // Validate user profile data
+    function isValidUserProfile() {
+      let data = request.resource.data;
+      return (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100))
+             && (!('photoURL' in data) || data.photoURL == null || data.photoURL.size() <= 500);
+    }
+
+    // =============================================
+    // RATE LIMITS COLLECTION (for tracking)
+    // =============================================
+    match /rateLimits/{userId} {
+      // Users can read/write their own rate limit doc
+      allow read, write: if isOwner(userId);
+    }
+
+    // =============================================
+    // CARDS COLLECTION
+    // =============================================
+    // Public READ for Top 10 showcase (landing page)
+    // Only authenticated owner can write with rate limiting
+    match /cards/{cardId} {
+      // Public read - needed for TopCards component on landing page
+      allow read: if true;
+
+      // Create: Must be authenticated, must be owner, must have valid data
+      // Limited to prevent spam
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid
+                    && isValidCard();
+
+      // Update: Must be owner, cannot change userId
+      allow update: if isOwner(resource.data.userId)
+                    && request.resource.data.userId == resource.data.userId
+                    && isValidCard();
+
+      // Delete: Must be owner
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // =============================================
+    // USERS COLLECTION
+    // =============================================
+    // Public READ for collectors page (leaderboard)
+    // Only own profile can be modified with validation
+    match /users/{userId} {
+      // Public read - needed for Collectors page
+      allow read: if true;
+
+      // Write: Only own profile, validate data size
+      allow create: if isOwner(userId)
+                    && request.resource.data.keys().hasAny(['displayName', 'email'])
+                    && isValidUserProfile();
+
+      allow update: if isOwner(userId)
+                    && isValidUserProfile()
+                    // Cannot escalate to admin role
+                    && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role || isAdmin());
+
+      // No delete allowed - users remain for data integrity
+      allow delete: if false;
+    }
+
+    // =============================================
+    // NOTIFICATIONS COLLECTION
+    // =============================================
+    // Private per user, limited writes
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated()
+                  && resource.data.userId == request.auth.uid;
+
+      // Write: Only Cloud Functions (via Admin SDK) or own user
+      // Limit notification size
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.keys().size() <= 10;
+
+      allow update: if isAuthenticated()
+                    && resource.data.userId == request.auth.uid;
+
+      allow delete: if isAuthenticated()
+                    && resource.data.userId == request.auth.uid;
+    }
+
+    // =============================================
+    // UPDATE LOGS COLLECTION
+    // =============================================
+    // Private - owner or admin can read
+    match /updateLogs/{logId} {
+      allow read: if isAuthenticated() &&
+                     (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Write: Only Cloud Functions (via Admin SDK)
+      allow write: if false;
+    }
+
+    // =============================================
+    // UPDATE STATUS COLLECTION
+    // =============================================
+    // Real-time progress tracking per user
+    match /updateStatus/{userId} {
+      allow read: if isAuthenticated() &&
+                     (request.auth.uid == userId || isAdmin());
+
+      // Write: Only Cloud Functions (via Admin SDK)
+      allow write: if false;
+    }
+
+    // =============================================
+    // PRICE HISTORY COLLECTION
+    // =============================================
+    match /priceHistory/{docId} {
+      // Public read for charts
+      allow read: if true;
+
+      // Write: Only Cloud Functions
+      allow write: if false;
+    }
+
+    // =============================================
+    // ADMIN LOGS COLLECTION
+    // =============================================
+    match /adminLogs/{logId} {
+      // Only admins can read
+      allow read: if isAdmin();
+
+      // Write: Only Cloud Functions
+      allow write: if false;
+    }
+
+    // =============================================
+    // CATCH-ALL: Deny everything else
+    // =============================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

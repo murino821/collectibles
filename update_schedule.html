@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Update Schedule</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f8fafc;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin-top: 0;
+      color: #1e293b;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      font-weight: 500;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .loading {
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+    }
+    .success {
+      background: #d1fae5;
+      border-left: 4px solid #10b981;
+    }
+    .error {
+      background: #fee2e2;
+      border-left: 4px solid #ef4444;
+    }
+    pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 13px;
+      max-height: 400px;
+    }
+    .user-card {
+      background: #f8fafc;
+      padding: 12px;
+      border-radius: 8px;
+      margin: 8px 0;
+      border-left: 3px solid #3b82f6;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>⏰ Update Schedule Manager</h1>
+    <p>Nastavenie automatickej aktualizácie cien pre všetkých zberateľov.</p>
+
+    <div id="loginSection" style="display:none; margin-bottom: 20px;">
+      <button id="loginBtn" onclick="loginWithGoogle()" style="background: #4285f4;">
+        🔐 Prihlás sa cez Google
+      </button>
+    </div>
+
+    <div id="userInfo" style="display:none; margin-bottom: 20px; padding: 15px; background: #f1f5f9; border-radius: 8px;">
+      <strong>Prihlásený:</strong> <span id="userEmail"></span>
+    </div>
+
+    <button id="viewBtn" onclick="viewCurrentSchedule()">Zobraziť aktuálny rozvrh</button>
+    <button id="updateBtn" onclick="updateScheduleToToday()">Nastaviť update na dnes o 11:00</button>
+
+    <div id="status"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+    import { getFirestore, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBlAhlya-NNp8gCxGPBIPxxCgDa6l9AXo8",
+      authDomain: "your-card-collection-2026.firebaseapp.com",
+      projectId: "your-card-collection-2026",
+      storageBucket: "your-card-collection-2026.firebasestorage.app",
+      messagingSenderId: "620171462959",
+      appId: "1:620171462959:web:28ecb209a009d16db679da"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const functions = getFunctions(app, 'us-central1');
+    const googleProvider = new GoogleAuthProvider();
+
+    let currentUser = null;
+
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+
+      const loginSection = document.getElementById('loginSection');
+      const userInfo = document.getElementById('userInfo');
+      const viewBtn = document.getElementById('viewBtn');
+      const updateBtn = document.getElementById('updateBtn');
+      const status = document.getElementById('status');
+
+      if (!user) {
+        // Not logged in - show login button
+        loginSection.style.display = 'block';
+        userInfo.style.display = 'none';
+        viewBtn.disabled = true;
+        updateBtn.disabled = true;
+        status.className = 'error';
+        status.innerHTML = '<strong>❌ Nie si prihlásený</strong><br>Klikni na tlačidlo vyššie pre prihlásenie.';
+      } else {
+        // Logged in - show user info
+        loginSection.style.display = 'none';
+        userInfo.style.display = 'block';
+        document.getElementById('userEmail').textContent = user.email;
+        viewBtn.disabled = false;
+        updateBtn.disabled = false;
+        status.innerHTML = '';
+
+        // Auto-load schedule
+        setTimeout(() => viewCurrentSchedule(), 500);
+      }
+    });
+
+    window.loginWithGoogle = async function() {
+      const status = document.getElementById('status');
+      try {
+        status.className = 'loading';
+        status.innerHTML = '<strong>⏳ Prihlasovanie...</strong>';
+        await signInWithPopup(auth, googleProvider);
+      } catch (error) {
+        console.error('Login error:', error);
+        status.className = 'error';
+        status.innerHTML = `<strong>❌ Chyba pri prihlásení:</strong><br><code>${error.message}</code>`;
+      }
+    };
+
+    window.viewCurrentSchedule = async function() {
+      const status = document.getElementById('status');
+      const btn = document.getElementById('viewBtn');
+
+      btn.disabled = true;
+      status.className = 'loading';
+      status.innerHTML = '<strong>🔍 Načítavam údaje...</strong>';
+
+      try {
+        const usersRef = collection(db, 'users');
+        const usersSnapshot = await getDocs(usersRef);
+
+        if (usersSnapshot.empty) {
+          status.className = 'error';
+          status.innerHTML = '<strong>❌ Žiadni zberatelia v databáze</strong>';
+          return;
+        }
+
+        let html = `<strong>📋 Aktuálny rozvrh (${usersSnapshot.size} zberatelia):</strong><br><br>`;
+
+        usersSnapshot.forEach((userDoc) => {
+          const user = userDoc.data();
+          const nextUpdate = user.nextUpdateDate?.toDate?.() || 'Nenastavené';
+          const enabled = user.priceUpdatesEnabled ? '✅' : '❌';
+
+          html += `
+            <div class="user-card">
+              <strong>${user.email || user.displayName || userDoc.id}</strong><br>
+              ${enabled} Auto-update: ${user.priceUpdatesEnabled ? 'Povolený' : 'Zakázaný'}<br>
+              📅 Ďalší update: ${nextUpdate instanceof Date ? nextUpdate.toLocaleString('sk-SK') : nextUpdate}<br>
+              🕐 Hodina: ${user.updateHourOfDay || 'N/A'}:00<br>
+              📆 Deň v mesiaci: ${user.updateDayOfMonth || 'N/A'}
+            </div>
+          `;
+        });
+
+        status.className = 'success';
+        status.innerHTML = html;
+      } catch (error) {
+        console.error('Error:', error);
+        status.className = 'error';
+        status.innerHTML = `<strong>❌ Chyba:</strong><br><code>${error.message}</code>`;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    window.updateScheduleToToday = async function() {
+      const status = document.getElementById('status');
+      const btn = document.getElementById('updateBtn');
+
+      if (!currentUser) {
+        status.className = 'error';
+        status.innerHTML = '<strong>❌ Nie si prihlásený</strong><br>Otvor svoju zbierku aplikáciu a prihlás sa.';
+        return;
+      }
+
+      if (!confirm('Naozaj chceš nastaviť update pre všetkých zberateľov na dnes o 11:00?')) {
+        return;
+      }
+
+      btn.disabled = true;
+      status.className = 'loading';
+      status.innerHTML = '<strong>⏳ Volám Cloud Function setScheduleForAllUsers...</strong>';
+
+      try {
+        // Call Cloud Function
+        const setScheduleForAllUsers = httpsCallable(functions, 'setScheduleForAllUsers');
+        const result = await setScheduleForAllUsers();
+
+        console.log('Result:', result.data);
+
+        const data = result.data;
+
+        let html = `<strong>✅ Rozvrh aktualizovaný!</strong><br><br>`;
+        html += `<strong>Nastavený čas:</strong> ${new Date(data.nextUpdateDate).toLocaleString('sk-SK')}<br>`;
+        html += `<strong>Aktualizovaných userov:</strong> ${data.usersUpdated}<br><br>`;
+        html += `<strong>Zberatelia:</strong><br>`;
+
+        data.users.forEach(user => {
+          html += `
+            <div class="user-card">
+              ✅ ${user.email}<br>
+              <small>User ID: ${user.id}</small>
+            </div>
+          `;
+        });
+
+        html += `<br><em>Scheduled Cloud Function bude hľadať týchto userov dnes o 11:00 a spustí im update.</em>`;
+
+        status.className = 'success';
+        status.innerHTML = html;
+      } catch (error) {
+        console.error('Error:', error);
+        status.className = 'error';
+        status.innerHTML = `<strong>❌ Chyba:</strong><br><code>${error.message}</code>`;
+        btn.disabled = false;
+      }
+    };
+
+    // Note: Auto-load is now in onAuthStateChanged after login
+  </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <!-- Homepage / Landing Page -->
+  <url>
+    <loc>https://your-card-collection-2026.web.app/</loc>
+    <lastmod>2026-01-29</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="sk" href="https://your-card-collection-2026.web.app/?lang=sk"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://your-card-collection-2026.web.app/?lang=en"/>
+    <xhtml:link rel="alternate" hreflang="cs" href="https://your-card-collection-2026.web.app/?lang=cz"/>
+  </url>
+
+  <!-- Collectors Page -->
+  <url>
+    <loc>https://your-card-collection-2026.web.app/collectors</loc>
+    <lastmod>2026-01-29</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+</urlset>

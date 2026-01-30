@@ -68,3 +68,9 @@ functions/.env
 
 # dataconnect generated files
 .dataconnect
+
+# Admin HTML files (contain Firebase config)
+admin_panel.html
+admin_logs.html
+set_admin_role.html
+trigger_manual_update.html

@@ -1,4 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useLanguage } from '../../LanguageContext';
 
 /**
  * PriceHistoryChart - Displays price evolution for a single card
@@ -7,6 +8,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
  * @param {boolean} darkMode - Dark mode flag
  */
 function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
+  const { t, language } = useLanguage();
+
   if (!priceHistory || priceHistory.length === 0) {
     return (
       <div style={{
@@ -19,20 +22,23 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
       }}>
         <div style={{ fontSize: '32px', marginBottom: '12px' }}>📊</div>
         <p style={{ margin: 0, fontSize: '14px' }}>
-          Žiadne historické dáta o cenách
+          {t('chart.noData')}
         </p>
         <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
-          Ceny sa budú zaznamenávať pri mesačných aktualizáciách
+          {t('chart.noDataHint')}
         </p>
       </div>
     );
   }
 
+  // Get locale for date formatting
+  const dateLocale = language === 'en' ? 'en-GB' : language === 'cz' ? 'cs-CZ' : 'sk-SK';
+
   // Transform Firestore Timestamps to readable dates
   const chartData = priceHistory.map(entry => {
     const date = entry.date?.toDate ? entry.date.toDate() : new Date(entry.date);
     return {
-      date: date.toLocaleDateString('sk-SK', { day: '2-digit', month: 'short', year: 'numeric' }),
+      date: date.toLocaleDateString(dateLocale, { day: '2-digit', month: 'short', year: 'numeric' }),
       cena: entry.price,
       timestamp: date.getTime() // For sorting
     };
@@ -68,10 +74,10 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
       }}>
         <div>
           <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: '600' }}>
-            Vývoj ceny
+            {t('chart.title')}
           </h4>
           <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
-            {chartData.length} záznamov
+            {chartData.length} {t('chart.records')}
           </p>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -120,7 +126,7 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
               fontSize: '13px'
             }}
             labelStyle={{ color: textColor, fontWeight: '600' }}
-            formatter={(value) => [`€${value.toFixed(2)}`, 'Cena']}
+            formatter={(value) => [`€${value.toFixed(2)}`, t('chart.price')]}
           />
           <Legend
             wrapperStyle={{ fontSize: '12px' }}
@@ -133,7 +139,7 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
             strokeWidth={2}
             dot={{ fill: lineColor, r: 4 }}
             activeDot={{ r: 6 }}
-            name="Cena (€)"
+            name={t('chart.priceLabel')}
           />
         </LineChart>
       </ResponsiveContainer>

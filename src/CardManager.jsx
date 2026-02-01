@@ -45,6 +45,8 @@ function CardManager({ user }) {
   const [deleteCard, setDeleteCard] = useState(null);
   const [userProfile, setUserProfile] = useState({ displayName: user.displayName, photoURL: user.photoURL });
   const [userRole, setUserRole] = useState('standard');
+  const [showFilters, setShowFilters] = useState(true);
+  const [showStats, setShowStats] = useState(true);
 
   // Persist dark mode to localStorage
   useEffect(() => {
@@ -351,125 +353,202 @@ function CardManager({ user }) {
         </div>
       </div>
 
-      <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', padding: isDesktop ? '20px' : '16px', borderRadius: '12px', marginBottom: '16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? 'repeat(5, 1fr)' : 'repeat(3, 1fr)', gap: isDesktop ? '16px' : '12px', textAlign: 'center' }}>
-          <div>
-            <div style={{ fontSize: isDesktop ? '28px' : '22px', fontWeight: 'bold' }}>{fmt(totalCurrent)} €</div>
-            <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.value')}</div>
+      <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', borderRadius: '12px', marginBottom: '16px', overflow: 'hidden' }}>
+        {/* Stats Header - clickable on mobile */}
+        <div
+          onClick={() => !isDesktop && setShowStats(!showStats)}
+          style={{
+            padding: isDesktop ? '20px' : '12px 16px',
+            cursor: isDesktop ? 'default' : 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
+          {/* Main stat always visible */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div>
+              <div style={{ fontSize: isDesktop ? '28px' : '20px', fontWeight: 'bold' }}>{fmt(totalCurrent)} €</div>
+              <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.value')}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: isDesktop ? '28px' : '20px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{fmt(profit)} €</div>
+              <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.unrealized')}</div>
+            </div>
           </div>
-          <div>
-            <div style={{ fontSize: isDesktop ? '28px' : '22px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{fmt(profit)} €</div>
-            <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.unrealized')}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: isDesktop ? '28px' : '22px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{fmt(soldProfit)} €</div>
-            <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.realized')}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: isDesktop ? '28px' : '22px', fontWeight: 'bold' }}>{collectionCards.length}</div>
-            <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.inCollection')}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: isDesktop ? '28px' : '22px', fontWeight: 'bold' }}>{soldCards.length}</div>
-            <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.sold')}</div>
-          </div>
+          {!isDesktop && (
+            <span style={{ fontSize: '16px', opacity: 0.8, transition: 'transform 0.2s', transform: showStats ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+          )}
         </div>
+        {/* Expandable stats on mobile */}
+        {(isDesktop || showStats) && (
+          <div style={{
+            padding: isDesktop ? '0 20px 20px' : '0 16px 12px',
+            display: 'grid',
+            gridTemplateColumns: isDesktop ? 'repeat(3, 1fr)' : 'repeat(3, 1fr)',
+            gap: isDesktop ? '16px' : '12px',
+            textAlign: 'center',
+            borderTop: isDesktop ? 'none' : '1px solid rgba(255,255,255,0.2)',
+            paddingTop: isDesktop ? '0' : '12px',
+            marginTop: isDesktop ? '0' : '0'
+          }}>
+            <div>
+              <div style={{ fontSize: isDesktop ? '28px' : '18px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{fmt(soldProfit)} €</div>
+              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.realized')}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: isDesktop ? '28px' : '18px', fontWeight: 'bold' }}>{collectionCards.length}</div>
+              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.inCollection')}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: isDesktop ? '28px' : '18px', fontWeight: 'bold' }}>{soldCards.length}</div>
+              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.sold')}</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filter Bar */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: isDesktop ? 'nowrap' : 'wrap', alignItems: 'stretch' }}>
-        <input
-          type="text"
-          placeholder={t('manager.search')}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            ...styles.button,
-            flex: isDesktop ? '0 0 50%' : '1 1 100%',
-            background: darkMode ? '#1e293b' : '#fff',
-            color: darkMode ? '#f8fafc' : '#0f172a',
-            fontSize: '16px'
-          }}
-        />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)' }}>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+      <div style={{ marginBottom: '16px' }}>
+        {/* Main row - always visible */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: isDesktop ? '0' : '8px', alignItems: 'stretch' }}>
+          <input
+            type="text"
+            placeholder={t('manager.search')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              ...styles.button,
+              flex: 1,
+              background: darkMode ? '#1e293b' : '#fff',
+              color: darkMode ? '#f8fafc' : '#0f172a',
+              fontSize: '16px'
+            }}
+          />
+          <button
+            onClick={openAddModal}
+            style={{ ...styles.button, ...styles.primaryButton, flex: '0 0 auto', padding: '12px 16px' }}
           >
-            <option value="all">{t('manager.filter.all')}</option>
-            <option value="zbierka">{t('manager.filter.collection')}</option>
-            <option value="predaná">{t('manager.filter.sold')}</option>
-          </select>
-          <select
-            value={photoFilter ? 'photo' : 'all'}
-            onChange={(e) => setPhotoFilter(e.target.value === 'photo')}
-            style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
-          >
-            <option value="all">{t('manager.filter.allPhotos')}</option>
-            <option value="photo">{t('manager.filter.withPhoto')}</option>
-          </select>
-        </div>
-        <button
-          onClick={openAddModal}
-          style={{ ...styles.button, ...styles.primaryButton, flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)' }}
-        >
-          {t('manager.add')}
-        </button>
-        {/* View Mode Toggle - ikony */}
-        <div style={{
-          display: 'flex',
-          gap: '4px',
-          flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)',
-          background: darkMode ? '#334155' : '#f3f4f6',
-          borderRadius: '12px',
-          padding: '4px'
-        }}>
-          {[
-            { mode: 'table', icon: '📊', title: t('manager.view.table') },
-            { mode: 'cards', icon: '🏒', title: t('manager.view.tiles') },
-            { mode: 'list', icon: '📋', title: t('manager.view.list') },
-            { mode: 'gallery', icon: '🖼️', title: t('manager.view.gallery') }
-          ].map(({ mode, icon, title }) => (
+            {isDesktop ? t('manager.add') : '+'}
+          </button>
+          {!isDesktop && (
             <button
-              key={mode}
-              onClick={() => setViewMode(mode)}
-              title={title}
+              onClick={() => setShowFilters(!showFilters)}
               style={{
-                flex: 1,
-                minWidth: '44px',
-                minHeight: '44px',
-                padding: '10px 8px',
-                border: 'none',
-                borderRadius: '8px',
-                background: viewMode === mode ? (darkMode ? '#667eea' : '#667eea') : 'transparent',
-                color: viewMode === mode ? 'white' : (darkMode ? '#f8fafc' : '#64748b'),
-                cursor: 'pointer',
-                fontSize: '18px',
-                transition: 'all 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
+                ...styles.button,
+                flex: '0 0 auto',
+                background: showFilters ? '#667eea' : darkMode ? '#334155' : '#f3f4f6',
+                color: showFilters ? 'white' : darkMode ? '#f8fafc' : '#64748b',
+                padding: '12px 14px'
               }}
             >
-              {icon}
+              🔧
             </button>
-          ))}
+          )}
         </div>
-        <button
-          onClick={() => setShowPortfolioChart(!showPortfolioChart)}
-          style={{
-            ...styles.button,
-            background: showPortfolioChart ? '#667eea' : darkMode ? '#334155' : '#f3f4f6',
-            color: showPortfolioChart ? 'white' : darkMode ? '#f8fafc' : '#0f172a',
-            flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)'
-          }}
-        >
-          {showPortfolioChart ? `📉 ${t('manager.chart.hide')}` : `📈 ${t('manager.chart.show')}`}
-        </button>
-        <div style={{ flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)' }}>
-          <ImportCSV onImportComplete={() => {}} />
-        </div>
+
+        {/* Expandable filters - collapsible on mobile */}
+        {(isDesktop || showFilters) && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: isDesktop ? 'nowrap' : 'wrap', alignItems: 'stretch' }}>
+            {isDesktop && (
+              <input
+                type="text"
+                placeholder={t('manager.search')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  ...styles.button,
+                  flex: '0 0 35%',
+                  background: darkMode ? '#1e293b' : '#fff',
+                  color: darkMode ? '#f8fafc' : '#0f172a',
+                  fontSize: '16px',
+                  display: 'none'
+                }}
+              />
+            )}
+            <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: '4px', flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)' }}>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+              >
+                <option value="all">{t('manager.filter.all')}</option>
+                <option value="zbierka">{t('manager.filter.collection')}</option>
+                <option value="predaná">{t('manager.filter.sold')}</option>
+              </select>
+              <select
+                value={photoFilter ? 'photo' : 'all'}
+                onChange={(e) => setPhotoFilter(e.target.value === 'photo')}
+                style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+              >
+                <option value="all">{t('manager.filter.allPhotos')}</option>
+                <option value="photo">{t('manager.filter.withPhoto')}</option>
+              </select>
+            </div>
+            {isDesktop && (
+              <button
+                onClick={openAddModal}
+                style={{ ...styles.button, ...styles.primaryButton, flex: '1 1 0' }}
+              >
+                {t('manager.add')}
+              </button>
+            )}
+            {/* View Mode Toggle - ikony */}
+            <div style={{
+              display: 'flex',
+              gap: '4px',
+              flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)',
+              background: darkMode ? '#334155' : '#f3f4f6',
+              borderRadius: '12px',
+              padding: '4px'
+            }}>
+              {[
+                { mode: 'table', icon: '📊', title: t('manager.view.table') },
+                { mode: 'cards', icon: '🏒', title: t('manager.view.tiles') },
+                { mode: 'list', icon: '📋', title: t('manager.view.list') },
+                { mode: 'gallery', icon: '🖼️', title: t('manager.view.gallery') }
+              ].map(({ mode, icon, title }) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  title={title}
+                  style={{
+                    flex: 1,
+                    minWidth: '44px',
+                    minHeight: '44px',
+                    padding: '10px 8px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: viewMode === mode ? (darkMode ? '#667eea' : '#667eea') : 'transparent',
+                    color: viewMode === mode ? 'white' : (darkMode ? '#f8fafc' : '#64748b'),
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowPortfolioChart(!showPortfolioChart)}
+              style={{
+                ...styles.button,
+                background: showPortfolioChart ? '#667eea' : darkMode ? '#334155' : '#f3f4f6',
+                color: showPortfolioChart ? 'white' : darkMode ? '#f8fafc' : '#0f172a',
+                flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)'
+              }}
+            >
+              {showPortfolioChart ? `📉 ${t('manager.chart.hide')}` : `📈 ${t('manager.chart.show')}`}
+            </button>
+            <div style={{ flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)' }}>
+              <ImportCSV onImportComplete={() => {}} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Portfolio Chart - zobrazí sa pod filter barom */}
@@ -639,8 +718,27 @@ function CardManager({ user }) {
           )}
         </div>
       ) : (
-        <div style={{ overflow: 'auto', maxHeight: '67vh', borderRadius: '12px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, background: darkMode ? '#1e293b' : '#fff' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', background: darkMode ? '#1e293b' : '#fff' }}>
+        <div style={{ position: 'relative' }}>
+          {!isDesktop && (
+            <div style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: '40px',
+              background: `linear-gradient(to right, transparent, ${darkMode ? 'rgba(30, 41, 59, 0.9)' : 'rgba(255, 255, 255, 0.9)'})`,
+              pointerEvents: 'none',
+              zIndex: 5,
+              borderRadius: '0 12px 12px 0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <span style={{ fontSize: '16px', opacity: 0.6 }}>→</span>
+            </div>
+          )}
+          <div style={{ overflow: 'auto', maxHeight: '67vh', borderRadius: '12px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, background: darkMode ? '#1e293b' : '#fff' }}>
+            <table style={{ width: '100%', minWidth: isDesktop ? 'auto' : '800px', borderCollapse: 'collapse', fontSize: '14px', background: darkMode ? '#1e293b' : '#fff' }}>
             <thead><tr style={{ background: darkMode ? '#334155' : '#f8fafc' }}>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>#</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.photo')}</th>
@@ -686,6 +784,7 @@ function CardManager({ user }) {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -835,8 +934,8 @@ function CardManager({ user }) {
               alignItems: 'center'
             }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Predať kartu</h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Potvrď predajnú cenu</p>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>{t('manager.sell.title')}</h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>{t('manager.sell.subtitle')}</p>
               </div>
               <button
                 onClick={() => setShowSellModal(false)}
@@ -868,17 +967,17 @@ function CardManager({ user }) {
               }}>
                 <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px' }}>{sellCard.item}</div>
                 <div style={{ fontSize: '13px', color: '#64748b' }}>
-                  Nákupná cena: €{sellCard.buy?.toFixed(2) || '0.00'}
+                  {t('manager.sell.buyPrice')} €{sellCard.buy?.toFixed(2) || '0.00'}
                 </div>
                 {sellCard.current && (
                   <div style={{ fontSize: '13px', color: '#64748b' }}>
-                    Aktuálna hodnota: €{sellCard.current.toFixed(2)}
+                    {t('manager.sell.currentValue')} €{sellCard.current.toFixed(2)}
                   </div>
                 )}
               </div>
 
               <label style={{ fontSize: '14px', fontWeight: '500', color: darkMode ? '#cbd5e1' : '#475569', display: 'block', marginBottom: '8px' }}>
-                Skutočná predajná cena (€)
+                {t('manager.sell.priceLabel')}
               </label>
               <input
                 type="number"
@@ -886,7 +985,7 @@ function CardManager({ user }) {
                 min="0"
                 value={sellPrice}
                 onChange={(e) => setSellPrice(e.target.value)}
-                placeholder="Zadaj predajnú cenu"
+                placeholder={t('manager.sell.pricePlaceholder')}
                 autoFocus
                 style={{
                   ...styles.button,
@@ -912,7 +1011,7 @@ function CardManager({ user }) {
                   fontWeight: '600',
                   textAlign: 'center'
                 }}>
-                  {parseFloat(sellPrice) >= sellCard.buy ? '📈' : '📉'} Zisk/Strata: €{(parseFloat(sellPrice) - sellCard.buy).toFixed(2)}
+                  {parseFloat(sellPrice) >= sellCard.buy ? '📈' : '📉'} {t('manager.sell.profitLoss')} €{(parseFloat(sellPrice) - sellCard.buy).toFixed(2)}
                   <span style={{ fontWeight: '400', marginLeft: '8px' }}>
                     ({((parseFloat(sellPrice) - sellCard.buy) / sellCard.buy * 100).toFixed(1)}%)
                   </span>
@@ -936,7 +1035,7 @@ function CardManager({ user }) {
                   color: darkMode ? '#f8fafc' : '#475569'
                 }}
               >
-                Zrušiť
+                {t('manager.modal.cancel')}
               </button>
               <button
                 onClick={handleSellConfirm}
@@ -949,7 +1048,7 @@ function CardManager({ user }) {
                   fontWeight: '600'
                 }}
               >
-                Potvrdiť predaj
+                {t('manager.sell.confirm')}
               </button>
             </div>
           </div>

@@ -129,6 +129,16 @@ export const translations = {
     'manager.modal.cancel': 'Zrušiť',
     'manager.modal.save': 'Uložiť',
 
+    // Sell Modal
+    'manager.sell.title': 'Predať kartu',
+    'manager.sell.subtitle': 'Potvrď predajnú cenu',
+    'manager.sell.buyPrice': 'Nákupná cena:',
+    'manager.sell.currentValue': 'Aktuálna hodnota:',
+    'manager.sell.priceLabel': 'Skutočná predajná cena (€)',
+    'manager.sell.pricePlaceholder': 'Zadaj predajnú cenu',
+    'manager.sell.profitLoss': 'Zisk/Strata:',
+    'manager.sell.confirm': 'Potvrdiť predaj',
+
     // Delete Modal
     'manager.delete.title': 'Zmazať položku',
     'manager.delete.subtitle': 'Táto akcia je nevratná',
@@ -304,6 +314,16 @@ export const translations = {
     'manager.modal.cancel': 'Cancel',
     'manager.modal.save': 'Save',
 
+    // Sell Modal
+    'manager.sell.title': 'Sell Card',
+    'manager.sell.subtitle': 'Confirm the selling price',
+    'manager.sell.buyPrice': 'Buy price:',
+    'manager.sell.currentValue': 'Current value:',
+    'manager.sell.priceLabel': 'Actual selling price (€)',
+    'manager.sell.pricePlaceholder': 'Enter selling price',
+    'manager.sell.profitLoss': 'Profit/Loss:',
+    'manager.sell.confirm': 'Confirm sale',
+
     // Delete Modal
     'manager.delete.title': 'Delete Item',
     'manager.delete.subtitle': 'This action cannot be undone',
@@ -478,6 +498,16 @@ export const translations = {
     'manager.modal.changePhoto': 'Změnit',
     'manager.modal.cancel': 'Zrušit',
     'manager.modal.save': 'Uložit',
+
+    // Sell Modal
+    'manager.sell.title': 'Prodat kartu',
+    'manager.sell.subtitle': 'Potvrďte prodejní cenu',
+    'manager.sell.buyPrice': 'Nákupní cena:',
+    'manager.sell.currentValue': 'Aktuální hodnota:',
+    'manager.sell.priceLabel': 'Skutečná prodejní cena (€)',
+    'manager.sell.pricePlaceholder': 'Zadejte prodejní cenu',
+    'manager.sell.profitLoss': 'Zisk/Ztráta:',
+    'manager.sell.confirm': 'Potvrdit prodej',
 
     // Delete Modal
     'manager.delete.title': 'Smazat položku',

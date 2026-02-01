@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { collection, addDoc } from 'firebase/firestore';
 import { db, auth } from '../../firebase';
 import { useToast } from './Toast';
@@ -6,6 +6,13 @@ import { useToast } from './Toast';
 export default function ImportCSV({ onImportComplete }) {
   const fileInputRef = useRef(null);
   const toast = useToast();
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const parseCSV = async (text) => {
     const lines = text
@@ -58,7 +65,6 @@ export default function ImportCSV({ onImportComplete }) {
           item: name,
           buy: null,
           current: null,
-          sell: null,
           status: 'zbierka',
           note: '',
           imageUrl: null,
@@ -83,9 +89,13 @@ export default function ImportCSV({ onImportComplete }) {
     <label style={{
       display: 'inline-flex',
       alignItems: 'center',
+      justifyContent: 'center',
       gap: '8px',
       padding: '10px 16px',
       minHeight: '44px',
+      height: '100%',
+      width: '100%',
+      boxSizing: 'border-box',
       backgroundColor: '#f3e8ff',
       color: '#6b21a8',
       border: '1px solid #e9d5ff',
@@ -99,7 +109,7 @@ export default function ImportCSV({ onImportComplete }) {
     onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e9d5ff'}
     onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f3e8ff'}
     >
-      📊 <span style={{ display: window.innerWidth < 768 ? 'none' : 'inline' }}>Import z </span>CSV
+      📊 {isDesktop && <span>Import z </span>}CSV
       <input
         ref={fileInputRef}
         type="file"

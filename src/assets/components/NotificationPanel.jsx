@@ -95,6 +95,9 @@ function NotificationPanel({ user, darkMode, onClose }) {
       zIndex: 9999,
       overflowY: 'auto',
       padding: '20px',
+      paddingTop: 'max(20px, env(safe-area-inset-top, 20px))',
+      paddingBottom: 'max(20px, env(safe-area-inset-bottom, 20px))',
+      paddingRight: 'max(20px, env(safe-area-inset-right, 20px))',
       animation: 'slideInRight 0.3s ease-out'
     }}>
       <style>

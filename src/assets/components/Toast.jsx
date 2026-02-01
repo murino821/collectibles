@@ -108,14 +108,14 @@ const ToastItem = ({ toast, onRemove }) => {
 const styles = {
   container: {
     position: 'fixed',
-    top: '20px',
-    right: '20px',
+    top: 'max(20px, env(safe-area-inset-top, 20px))',
+    right: 'max(12px, env(safe-area-inset-right, 12px))',
     zIndex: 9999,
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
     maxWidth: '400px',
-    width: 'calc(100vw - 40px)',
+    width: 'calc(100vw - 24px - env(safe-area-inset-right, 0px) - env(safe-area-inset-left, 0px))',
   },
   toast: {
     display: 'flex',

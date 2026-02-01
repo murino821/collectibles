@@ -26,8 +26,11 @@ function CardManager({ user }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [photoFilter, setPhotoFilter] = useState(false);
-  const [viewMode, setViewMode] = useState('cards');
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [viewMode, setViewMode] = useState(() => {
+    // Default: table for desktop, list for mobile
+    return window.innerWidth >= 768 ? 'table' : 'list';
+  });
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
   const [formData, setFormData] = useState({ item: '', buy: '', current: '', status: 'zbierka', note: '', imageFile: null, imageUrl: '', soldPrice: '' });
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -434,14 +437,19 @@ function CardManager({ user }) {
               title={title}
               style={{
                 flex: 1,
-                padding: '8px',
+                minWidth: '44px',
+                minHeight: '44px',
+                padding: '10px 8px',
                 border: 'none',
                 borderRadius: '8px',
                 background: viewMode === mode ? (darkMode ? '#667eea' : '#667eea') : 'transparent',
                 color: viewMode === mode ? 'white' : (darkMode ? '#f8fafc' : '#64748b'),
                 cursor: 'pointer',
-                fontSize: '16px',
-                transition: 'all 0.2s'
+                fontSize: '18px',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
             >
               {icon}
@@ -683,14 +691,14 @@ function CardManager({ user }) {
 
       {showModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isDesktop ? '20px' : '12px' }} onClick={() => setShowModal(false)}>
-          <div style={{ background: darkMode ? '#1e293b' : 'white', color: darkMode ? '#f8fafc' : '#0f172a', borderRadius: '16px', width: '100%', maxWidth: isDesktop ? '680px' : '100%', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ background: darkMode ? '#1e293b' : 'white', color: darkMode ? '#f8fafc' : '#0f172a', borderRadius: '16px', width: '100%', maxWidth: isDesktop ? '680px' : '100%', maxHeight: isDesktop ? 'none' : 'calc(100vh - 24px)', overflowY: isDesktop ? 'visible' : 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)' }} onClick={(e) => e.stopPropagation()}>
             {/* Header */}
-            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: isDesktop ? '16px 24px' : '14px 16px', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong style={{ fontSize: '18px' }}>{editingCard ? t('manager.modal.edit') : t('manager.modal.add')}</strong>
               <button onClick={() => setShowModal(false)} style={{ background: darkMode ? '#334155' : '#f1f5f9', border: 'none', borderRadius: '8px', cursor: 'pointer', color: darkMode ? '#94a3b8' : '#64748b', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>✕</button>
             </div>
             <form onSubmit={handleSubmit}>
-              <div style={{ padding: '20px 24px', display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: '20px' }}>
+              <div style={{ padding: isDesktop ? '20px 24px' : '16px', display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? '20px' : '16px' }}>
                 {/* Left side - Image */}
                 <div style={{ flex: isDesktop ? '0 0 160px' : 'none' }}>
                   {(formData.imageUrl || formData.imageFile) ? (
@@ -723,7 +731,7 @@ function CardManager({ user }) {
                   </div>
 
                   {/* Status + Buy price row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: '14px' }}>
                     <div>
                       <label style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '6px' }}>{t('manager.modal.status')}</label>
                       <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }}><option value="zbierka">{t('manager.filter.collection')}</option><option value="predaná">{t('manager.filter.sold')}</option></select>
@@ -735,7 +743,7 @@ function CardManager({ user }) {
                   </div>
 
                   {/* Current price + Sold price row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: formData.status === 'predaná' ? '1fr 1fr' : '1fr', gap: '14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: (formData.status === 'predaná' && isDesktop) ? '1fr 1fr' : '1fr', gap: '14px' }}>
                     <div>
                       <label style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '6px' }}>
                         {t('manager.modal.currentPrice')}
@@ -767,7 +775,7 @@ function CardManager({ user }) {
               )}
 
               {/* Footer */}
-              <div style={{ padding: '14px 24px', borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, display: 'flex', gap: '12px', justifyContent: 'flex-end', background: darkMode ? '#0f172a' : '#f8fafc', borderRadius: '0 0 16px 16px' }}>
+              <div style={{ padding: isDesktop ? '14px 24px' : '12px 16px', borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, display: 'flex', gap: '12px', justifyContent: 'flex-end', background: darkMode ? '#0f172a' : '#f8fafc', borderRadius: '0 0 16px 16px' }}>
                 <button type="button" onClick={() => setShowModal(false)} style={{ ...styles.button, padding: '12px 24px' }}>{t('manager.modal.cancel')}</button>
                 <button type="submit" style={{ ...styles.button, ...styles.primaryButton, padding: '12px 28px' }}>{t('manager.modal.save')}</button>
               </div>

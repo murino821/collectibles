@@ -6,7 +6,7 @@ import { t, getCurrentLanguage } from '../../translations';
 /**
  * ProfileEditor - Modal for editing user profile (displayName, photoURL)
  */
-function ProfileEditor({ user, isOpen, onClose, onUpdate }) {
+function ProfileEditor({ user, isOpen, onClose, onUpdate, isMockAuth = false }) {
   const [displayName, setDisplayName] = useState(user.displayName || '');
   const [photoURL, setPhotoURL] = useState(user.photoURL || '');
   const [saving, setSaving] = useState(false);
@@ -16,6 +16,12 @@ function ProfileEditor({ user, isOpen, onClose, onUpdate }) {
   const handleSave = async () => {
     if (!displayName.trim()) {
       setError(t('profile.error.empty', lang));
+      return;
+    }
+
+    if (isMockAuth) {
+      onUpdate({ displayName: displayName.trim(), photoURL: photoURL.trim() });
+      onClose();
       return;
     }
 

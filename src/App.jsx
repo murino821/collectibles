@@ -29,12 +29,30 @@ const LoadingFallback = () => (
 );
 
 function App() {
+  const mockAuthQuery = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('mockAuth')
+    : null;
+  const isMockAuth = import.meta.env.DEV && (
+    mockAuthQuery === '1' || (mockAuthQuery !== '0' && import.meta.env.VITE_MOCK_AUTH === '1')
+  );
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [currentPage, setCurrentPage] = useState('home'); // 'home' or 'collectors'
 
   useEffect(() => {
+    if (isMockAuth) {
+      setUser({
+        uid: 'mock-user',
+        displayName: 'Mock User',
+        email: 'mock@example.com',
+        photoURL: null
+      });
+      setShowLoginModal(false);
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -44,7 +62,7 @@ function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isMockAuth]);
 
   if (loading) {
     return <LoadingFallback />;

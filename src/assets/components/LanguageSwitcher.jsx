@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { getCurrentLanguage, setLanguage } from '../../translations';
+import { useLanguage } from '../../LanguageContext';
+import { setLanguage as saveLanguage } from '../../translations';
 
 /**
- * LanguageSwitcher - Dropdown for switching languages
+ * LanguageSwitcher - Dropdown for switching languages (flags only)
  */
 function LanguageSwitcher({ darkMode }) {
-  const [currentLang, setCurrentLang] = useState(getCurrentLanguage());
+  const { language, setLanguage } = useLanguage();
 
   const languages = [
     { code: 'sk', flag: '🇸🇰', name: 'Slovenčina' },
@@ -14,28 +14,28 @@ function LanguageSwitcher({ darkMode }) {
   ];
 
   const handleLanguageChange = (langCode) => {
-    setLanguage(langCode);
-    setCurrentLang(langCode);
-    // Reload page to apply new language
-    window.location.reload();
+    saveLanguage(langCode); // Save to localStorage
+    setLanguage(langCode);  // Update context (triggers re-render)
   };
 
   return (
     <div style={styles.container}>
       <select
-        value={currentLang}
+        value={language}
         onChange={(e) => handleLanguageChange(e.target.value)}
         style={{
           ...styles.select,
           background: darkMode ? '#334155' : 'white',
           color: darkMode ? 'white' : '#0f172a',
-          borderColor: darkMode ? '#475569' : '#e2e8f0'
+          borderColor: darkMode ? '#475569' : '#e2e8f0',
+          width: '52px',
+          paddingRight: '4px'
         }}
         title="Change language"
       >
         {languages.map(lang => (
           <option key={lang.code} value={lang.code}>
-            {lang.flag} {lang.name}
+            {lang.flag}
           </option>
         ))}
       </select>

@@ -104,7 +104,7 @@ export default function ImportCSV({ onImportComplete }) {
       fontSize: '14px',
       fontWeight: '500',
       transition: 'all 0.2s',
-      whiteSpace: 'nowrap'
+      whiteSpace: 'normal'
     }}
     onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e9d5ff'}
     onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f3e8ff'}

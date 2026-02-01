@@ -13,8 +13,67 @@ import { useToast } from './assets/components/Toast';
 import { useLanguage } from './LanguageContext';
 
 function CardManager({ user }) {
+  const isMockAuth = import.meta.env.DEV && import.meta.env.VITE_MOCK_AUTH === '1';
   const toast = useToast();
   const { t } = useLanguage();
+  const mockCards = [
+    {
+      id: 'mock-1',
+      userId: 'mock-user',
+      item: '2005 Upper Deck Young Guns #201 Crosby PSA 10',
+      buy: 180.0,
+      current: 320.0,
+      status: 'zbierka',
+      note: 'Top rookie card',
+      imageUrl: '/sports.jpg',
+      priceHistory: [
+        { date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30), price: 250 },
+        { date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15), price: 290 },
+        { date: new Date(), price: 320 }
+      ]
+    },
+    {
+      id: 'mock-2',
+      userId: 'mock-user',
+      item: 'Connor McDavid OPC Platinum Base',
+      buy: 25.0,
+      current: 40.0,
+      status: 'zbierka',
+      note: '',
+      imageUrl: null
+    },
+    {
+      id: 'mock-3',
+      userId: 'mock-user',
+      item: 'Ovechkin 2005-06 SPA Future Watch Auto',
+      buy: 210.0,
+      current: 280.0,
+      status: 'predaná',
+      soldPrice: 295.0,
+      note: 'Sold at expo',
+      imageUrl: '/sports-collection.jpg'
+    },
+    {
+      id: 'mock-4',
+      userId: 'mock-user',
+      item: 'Jagr 1990-91 Score Rookie',
+      buy: 8.0,
+      current: 12.0,
+      status: 'zbierka',
+      note: 'No photo',
+      imageUrl: null
+    }
+  ];
+  const mockNotifications = [
+    {
+      id: 'mock-notif-1',
+      type: 'system',
+      title: 'Mock notifikácia',
+      message: 'Testovací záznam pre E2E.',
+      createdAt: { toDate: () => new Date(Date.now() - 1000 * 60 * 60) }
+    }
+  ];
+  const createMockId = () => `mock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const [cards, setCards] = useState([]);
   const [filteredCards, setFilteredCards] = useState([]);
   const [darkMode, setDarkMode] = useState(() => {
@@ -66,6 +125,7 @@ function CardManager({ user }) {
   // Load user data (role, limits)
   useEffect(() => {
     if (!user) return;
+    if (isMockAuth) return;
 
     const loadUserData = async () => {
       try {
@@ -84,6 +144,7 @@ function CardManager({ user }) {
 
   useEffect(() => {
     if (!user) return;
+    if (isMockAuth) return;
     const q = query(collection(db, 'cards'), where('userId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const cardsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -93,7 +154,14 @@ function CardManager({ user }) {
   }, [user]);
 
   useEffect(() => {
+    if (isMockAuth) {
+      setCards(prev => (prev.length ? prev : mockCards));
+    }
+  }, [isMockAuth]);
+
+  useEffect(() => {
     if (!user) return;
+    if (isMockAuth) return;
     // Subscribe to unread notifications count
     const q = query(
       collection(db, 'notifications'),
@@ -110,6 +178,7 @@ function CardManager({ user }) {
 
   useEffect(() => {
     if (!user) return;
+    if (isMockAuth) return;
 
     const initializeUserProfile = async () => {
       const userRef = doc(db, 'users', user.uid);
@@ -172,6 +241,40 @@ function CardManager({ user }) {
     e.preventDefault();
     if (!formData.item.trim()) { toast.warning('Vyplň aspoň pole "Položka"'); return; }
     try {
+      if (isMockAuth) {
+        const mockImageUrl = formData.imageFile ? URL.createObjectURL(formData.imageFile) : formData.imageUrl;
+        const cardData = {
+          id: editingCard?.id || createMockId(),
+          item: formData.item.trim(),
+          buy: formData.buy ? parseFloat(formData.buy) : null,
+          current: formData.current ? parseFloat(formData.current) : null,
+          status: formData.status,
+          note: formData.note.trim(),
+          imageUrl: mockImageUrl,
+          userId: user.uid,
+          updatedAt: new Date()
+        };
+
+        if (formData.status === 'predaná') {
+          cardData.soldAt = new Date();
+          cardData.soldPrice = formData.soldPrice ? parseFloat(formData.soldPrice) :
+                              (formData.current ? parseFloat(formData.current) : null);
+        } else if (editingCard?.status === 'predaná') {
+          cardData.soldAt = null;
+          cardData.soldPrice = null;
+        }
+
+        setCards(prev => {
+          if (editingCard) {
+            return prev.map(c => (c.id === editingCard.id ? { ...c, ...cardData } : c));
+          }
+          return [cardData, ...prev];
+        });
+
+        setShowModal(false);
+        return;
+      }
+
       let imageUrl = formData.imageUrl;
       if (formData.imageFile) {
         const fileRef = ref(storage, `cards/${user.uid}/${Date.now()}_${formData.imageFile.name}`);
@@ -227,6 +330,13 @@ function CardManager({ user }) {
   const handleDeleteConfirm = async () => {
     if (!deleteCard) return;
     try {
+      if (isMockAuth) {
+        setCards(prev => prev.filter(c => c.id !== deleteCard.id));
+        toast.success('Karta bola zmazaná');
+        setShowDeleteModal(false);
+        setDeleteCard(null);
+        return;
+      }
       await deleteDoc(doc(db, 'cards', deleteCard.id));
       toast.success('Karta bola zmazaná');
       setShowDeleteModal(false);
@@ -248,6 +358,18 @@ function CardManager({ user }) {
     const finalPrice = sellPrice ? parseFloat(sellPrice) : (sellCard.current || 0);
 
     try {
+      if (isMockAuth) {
+        setCards(prev => prev.map(c => (
+          c.id === sellCard.id
+            ? { ...c, status: 'predaná', soldPrice: finalPrice, soldAt: new Date(), updatedAt: new Date() }
+            : c
+        )));
+        toast.success(`Karta predaná za €${finalPrice.toFixed(2)}`);
+        setShowSellModal(false);
+        setSellCard(null);
+        setSellPrice('');
+        return;
+      }
       await updateDoc(doc(db, 'cards', sellCard.id), {
         status: 'predaná',
         soldPrice: finalPrice,
@@ -297,6 +419,12 @@ function CardManager({ user }) {
               👤
             </button>
           )}
+          <button
+            onClick={handleLogout}
+            style={{ ...styles.button, border: '1px solid #fecaca', background: '#fee2e2', color: '#991b1b' }}
+          >
+            {isDesktop ? 'Odhlásiť' : '🚪'}
+          </button>
           <button
             onClick={() => setShowNotifications(true)}
             style={{
@@ -349,128 +477,111 @@ function CardManager({ user }) {
             </button>
           )}
           <button onClick={() => setDarkMode(!darkMode)} style={{ ...styles.button, width: '44px', height: '44px', padding: '0', background: '#eef2ff' }} title="Prepnúť tmavý režim">{darkMode ? '☀️' : '🌙'}</button>
-          <button onClick={handleLogout} style={{ ...styles.button, border: '1px solid #fecaca', background: '#fee2e2', color: '#991b1b' }}>{isDesktop ? 'Odhlásiť' : '🚪'}</button>
         </div>
       </div>
 
       <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', borderRadius: '12px', marginBottom: '16px', overflow: 'hidden' }}>
-        {/* Stats Header - clickable on mobile */}
-        <div
-          onClick={() => !isDesktop && setShowStats(!showStats)}
-          style={{
-            padding: isDesktop ? '20px' : '12px 16px',
-            cursor: isDesktop ? 'default' : 'pointer',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
-        >
-          {/* Main stat always visible */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {isDesktop ? (
+          /* Desktop: všetky stats v jednom riadku */
+          <div style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: isDesktop ? '28px' : '20px', fontWeight: 'bold' }}>{fmt(totalCurrent)} €</div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{fmt(totalCurrent)} €</div>
               <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.value')}</div>
             </div>
             <div>
-              <div style={{ fontSize: isDesktop ? '28px' : '20px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{fmt(profit)} €</div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{fmt(profit)} €</div>
               <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.unrealized')}</div>
             </div>
-          </div>
-          {!isDesktop && (
-            <span style={{ fontSize: '16px', opacity: 0.8, transition: 'transform 0.2s', transform: showStats ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
-          )}
-        </div>
-        {/* Expandable stats on mobile */}
-        {(isDesktop || showStats) && (
-          <div style={{
-            padding: isDesktop ? '0 20px 20px' : '0 16px 12px',
-            display: 'grid',
-            gridTemplateColumns: isDesktop ? 'repeat(3, 1fr)' : 'repeat(3, 1fr)',
-            gap: isDesktop ? '16px' : '12px',
-            textAlign: 'center',
-            borderTop: isDesktop ? 'none' : '1px solid rgba(255,255,255,0.2)',
-            paddingTop: isDesktop ? '0' : '12px',
-            marginTop: isDesktop ? '0' : '0'
-          }}>
             <div>
-              <div style={{ fontSize: isDesktop ? '28px' : '18px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{fmt(soldProfit)} €</div>
-              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.realized')}</div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{fmt(soldProfit)} €</div>
+              <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.realized')}</div>
             </div>
-            <div>
-              <div style={{ fontSize: isDesktop ? '28px' : '18px', fontWeight: 'bold' }}>{collectionCards.length}</div>
-              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.inCollection')}</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{collectionCards.length}</div>
+              <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.inCollection')}</div>
             </div>
-            <div>
-              <div style={{ fontSize: isDesktop ? '28px' : '18px', fontWeight: 'bold' }}>{soldCards.length}</div>
-              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.sold')}</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{soldCards.length}</div>
+              <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.sold')}</div>
             </div>
           </div>
+        ) : (
+          /* Mobile: expandable accordion */
+          <>
+            <div
+              onClick={() => setShowStats(!showStats)}
+              style={{
+                padding: '12px 16px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{fmt(totalCurrent)} €</div>
+                  <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.value')}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{fmt(profit)} €</div>
+                  <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.unrealized')}</div>
+                </div>
+              </div>
+              <span style={{ fontSize: '16px', opacity: 0.8, transition: 'transform 0.2s', transform: showStats ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+            </div>
+            {showStats && (
+              <div style={{
+                padding: '0 16px 12px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '12px',
+                textAlign: 'center',
+                borderTop: '1px solid rgba(255,255,255,0.2)',
+                paddingTop: '12px'
+              }}>
+                <div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{fmt(soldProfit)} €</div>
+                  <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.realized')}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{collectionCards.length}</div>
+                  <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.inCollection')}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{soldCards.length}</div>
+                  <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.sold')}</div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* Filter Bar */}
       <div style={{ marginBottom: '16px' }}>
-        {/* Main row - always visible */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: isDesktop ? '0' : '8px', alignItems: 'stretch' }}>
-          <input
-            type="text"
-            placeholder={t('manager.search')}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              ...styles.button,
-              flex: 1,
-              background: darkMode ? '#1e293b' : '#fff',
-              color: darkMode ? '#f8fafc' : '#0f172a',
-              fontSize: '16px'
-            }}
-          />
-          <button
-            onClick={openAddModal}
-            style={{ ...styles.button, ...styles.primaryButton, flex: '0 0 auto', padding: '12px 16px' }}
-          >
-            {isDesktop ? t('manager.add') : '+'}
-          </button>
-          {!isDesktop && (
-            <button
-              onClick={() => setShowFilters(!showFilters)}
+        {isDesktop ? (
+          /* Desktop: Search flex-5, ostatné flex-1 každý */
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+            <input
+              type="text"
+              placeholder={t('manager.search')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               style={{
                 ...styles.button,
-                flex: '0 0 auto',
-                background: showFilters ? '#667eea' : darkMode ? '#334155' : '#f3f4f6',
-                color: showFilters ? 'white' : darkMode ? '#f8fafc' : '#64748b',
-                padding: '12px 14px'
+                flex: 5,
+                minWidth: 0,
+                background: darkMode ? '#1e293b' : '#fff',
+                color: darkMode ? '#f8fafc' : '#0f172a',
+                fontSize: '16px'
               }}
-            >
-              🔧
-            </button>
-          )}
-        </div>
-
-        {/* Expandable filters - collapsible on mobile */}
-        {(isDesktop || showFilters) && (
-          <div style={{ display: 'flex', gap: '8px', flexWrap: isDesktop ? 'nowrap' : 'wrap', alignItems: 'stretch' }}>
-            {isDesktop && (
-              <input
-                type="text"
-                placeholder={t('manager.search')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  ...styles.button,
-                  flex: '0 0 35%',
-                  background: darkMode ? '#1e293b' : '#fff',
-                  color: darkMode ? '#f8fafc' : '#0f172a',
-                  fontSize: '16px',
-                  display: 'none'
-                }}
-              />
-            )}
-            <div style={{ display: 'flex', flexDirection: isDesktop ? 'row' : 'column', gap: '4px', flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)' }}>
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+                style={{ ...styles.button, width: '100%', background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', padding: '8px 12px', minHeight: '0', height: 'auto' }}
               >
                 <option value="all">{t('manager.filter.all')}</option>
                 <option value="zbierka">{t('manager.filter.collection')}</option>
@@ -479,50 +590,47 @@ function CardManager({ user }) {
               <select
                 value={photoFilter ? 'photo' : 'all'}
                 onChange={(e) => setPhotoFilter(e.target.value === 'photo')}
-                style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+                style={{ ...styles.button, width: '100%', background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', padding: '8px 12px', minHeight: '0', height: 'auto' }}
               >
                 <option value="all">{t('manager.filter.allPhotos')}</option>
                 <option value="photo">{t('manager.filter.withPhoto')}</option>
               </select>
             </div>
-            {isDesktop && (
-              <button
-                onClick={openAddModal}
-                style={{ ...styles.button, ...styles.primaryButton, flex: '1 1 0' }}
-              >
-                {t('manager.add')}
-              </button>
-            )}
-            {/* View Mode Toggle - ikony */}
+            <button
+              onClick={openAddModal}
+              style={{ ...styles.button, ...styles.primaryButton, flex: 1, minWidth: 0 }}
+            >
+              {t('manager.add')}
+            </button>
             <div style={{
               display: 'flex',
               gap: '4px',
-              flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)',
+              flex: 1,
+              minWidth: 0,
               background: darkMode ? '#334155' : '#f3f4f6',
               borderRadius: '12px',
               padding: '4px'
             }}>
-              {[
-                { mode: 'table', icon: '📊', title: t('manager.view.table') },
-                { mode: 'cards', icon: '🏒', title: t('manager.view.tiles') },
-                { mode: 'list', icon: '📋', title: t('manager.view.list') },
-                { mode: 'gallery', icon: '🖼️', title: t('manager.view.gallery') }
-              ].map(({ mode, icon, title }) => (
+          {[
+            { mode: 'list', icon: '📋', title: t('manager.view.list') },
+            { mode: 'cards', icon: '🏒', title: t('manager.view.tiles') },
+            { mode: 'gallery', icon: '🖼️', title: t('manager.view.gallery') },
+            { mode: 'table', icon: '📊', title: t('manager.view.table') }
+          ].map(({ mode, icon, title }) => (
                 <button
                   key={mode}
                   onClick={() => setViewMode(mode)}
                   title={title}
                   style={{
                     flex: 1,
-                    minWidth: '44px',
                     minHeight: '44px',
-                    padding: '10px 8px',
+                    padding: '10px 2px',
                     border: 'none',
                     borderRadius: '8px',
-                    background: viewMode === mode ? (darkMode ? '#667eea' : '#667eea') : 'transparent',
+                    background: viewMode === mode ? '#667eea' : 'transparent',
                     color: viewMode === mode ? 'white' : (darkMode ? '#f8fafc' : '#64748b'),
                     cursor: 'pointer',
-                    fontSize: '18px',
+                    fontSize: '16px',
                     transition: 'all 0.2s',
                     display: 'flex',
                     alignItems: 'center',
@@ -537,24 +645,138 @@ function CardManager({ user }) {
               onClick={() => setShowPortfolioChart(!showPortfolioChart)}
               style={{
                 ...styles.button,
+                flex: 1,
+                minWidth: 0,
                 background: showPortfolioChart ? '#667eea' : darkMode ? '#334155' : '#f3f4f6',
-                color: showPortfolioChart ? 'white' : darkMode ? '#f8fafc' : '#0f172a',
-                flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)'
+                color: showPortfolioChart ? 'white' : darkMode ? '#f8fafc' : '#0f172a'
               }}
             >
               {showPortfolioChart ? `📉 ${t('manager.chart.hide')}` : `📈 ${t('manager.chart.show')}`}
             </button>
-            <div style={{ flex: isDesktop ? '1 1 0' : '1 1 calc(50% - 4px)' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <ImportCSV onImportComplete={() => {}} />
             </div>
           </div>
+        ) : (
+          /* Mobile: search + add + filter toggle v prvom riadku, ostatné expandable */
+          <>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'stretch' }}>
+              <input
+                type="text"
+                placeholder={t('manager.search')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  ...styles.button,
+                  flex: 1,
+                  background: darkMode ? '#1e293b' : '#fff',
+                  color: darkMode ? '#f8fafc' : '#0f172a',
+                  fontSize: '16px'
+                }}
+              />
+              <button
+                onClick={openAddModal}
+                style={{ ...styles.button, ...styles.primaryButton, flex: '0 0 auto', padding: '12px 16px' }}
+              >
+                +
+              </button>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                style={{
+                  ...styles.button,
+                  flex: '0 0 auto',
+                  background: showFilters ? '#667eea' : darkMode ? '#334155' : '#f3f4f6',
+                  color: showFilters ? 'white' : darkMode ? '#f8fafc' : '#64748b',
+                  padding: '12px 14px'
+                }}
+              >
+                🔧
+              </button>
+            </div>
+            {showFilters && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 calc(50% - 4px)' }}>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+                  >
+                    <option value="all">{t('manager.filter.all')}</option>
+                    <option value="zbierka">{t('manager.filter.collection')}</option>
+                    <option value="predaná">{t('manager.filter.sold')}</option>
+                  </select>
+                  <select
+                    value={photoFilter ? 'photo' : 'all'}
+                    onChange={(e) => setPhotoFilter(e.target.value === 'photo')}
+                    style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+                  >
+                    <option value="all">{t('manager.filter.allPhotos')}</option>
+                    <option value="photo">{t('manager.filter.withPhoto')}</option>
+                  </select>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  gap: '4px',
+                  flex: '1 1 calc(50% - 4px)',
+                  background: darkMode ? '#334155' : '#f3f4f6',
+                  borderRadius: '12px',
+                  padding: '4px'
+                }}>
+                  {[
+                    { mode: 'list', icon: '📋', title: t('manager.view.list') },
+                    { mode: 'cards', icon: '🏒', title: t('manager.view.tiles') },
+                    { mode: 'gallery', icon: '🖼️', title: t('manager.view.gallery') },
+                    { mode: 'table', icon: '📊', title: t('manager.view.table') }
+                  ].map(({ mode, icon, title }) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      title={title}
+                      style={{
+                        flex: 1,
+                        minWidth: '44px',
+                        minHeight: '44px',
+                        padding: '10px 8px',
+                        border: 'none',
+                        borderRadius: '8px',
+                        background: viewMode === mode ? '#667eea' : 'transparent',
+                        color: viewMode === mode ? 'white' : (darkMode ? '#f8fafc' : '#64748b'),
+                        cursor: 'pointer',
+                        fontSize: '18px',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setShowPortfolioChart(!showPortfolioChart)}
+                  style={{
+                    ...styles.button,
+                    background: showPortfolioChart ? '#667eea' : darkMode ? '#334155' : '#f3f4f6',
+                    color: showPortfolioChart ? 'white' : darkMode ? '#f8fafc' : '#0f172a',
+                    flex: '1 1 calc(50% - 4px)'
+                  }}
+                >
+                  {showPortfolioChart ? `📉 ${t('manager.chart.hide')}` : `📈 ${t('manager.chart.show')}`}
+                </button>
+                <div style={{ flex: '1 1 calc(50% - 4px)' }}>
+                  <ImportCSV onImportComplete={() => {}} />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* Portfolio Chart - zobrazí sa pod filter barom */}
       {showPortfolioChart && (
         <div style={{ marginBottom: '16px' }}>
-          <PortfolioChart user={user} darkMode={darkMode} />
+          <PortfolioChart user={user} darkMode={darkMode} isMockAuth={isMockAuth} />
         </div>
       )}
 
@@ -887,6 +1109,8 @@ function CardManager({ user }) {
         <NotificationPanel
           user={user}
           darkMode={darkMode}
+          isMockAuth={isMockAuth}
+          mockNotifications={mockNotifications}
           onClose={() => setShowNotifications(false)}
         />
       )}
@@ -895,6 +1119,7 @@ function CardManager({ user }) {
         <ProfileEditor
           user={{ ...user, displayName: userProfile.displayName, photoURL: userProfile.photoURL }}
           isOpen={showProfileEditor}
+          isMockAuth={isMockAuth}
           onClose={() => setShowProfileEditor(false)}
           onUpdate={(newProfile) => {
             setUserProfile(newProfile);

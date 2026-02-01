@@ -3,12 +3,17 @@ import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc, w
 import { db } from '../../firebase';
 import { useToast } from './Toast';
 
-function NotificationPanel({ user, darkMode, onClose }) {
+function NotificationPanel({ user, darkMode, onClose, isMockAuth = false, mockNotifications = [] }) {
   const toast = useToast();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
+    if (isMockAuth) {
+      setNotifications(mockNotifications);
+      setUnreadCount(mockNotifications.length);
+      return;
+    }
     if (!user) return;
 
     // Subscribe to notifications

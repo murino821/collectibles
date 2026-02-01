@@ -18,13 +18,31 @@ const TIME_FILTERS = [
  * @param {Object} user - Firebase user object
  * @param {boolean} darkMode - Dark mode flag
  */
-function PortfolioChart({ user, darkMode = false }) {
+function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
   const [allData, setAllData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [timeFilter, setTimeFilter] = useState('ALL');
   const [cards, setCards] = useState([]);
 
   useEffect(() => {
+    if (isMockAuth) {
+      const now = new Date();
+      const mockData = [
+        { date: new Date(now.getFullYear(), 0, 15), hodnota: 120, pocetPoloziek: 2 },
+        { date: new Date(now.getFullYear(), 1, 15), hodnota: 150, pocetPoloziek: 3 },
+        { date: new Date(now.getFullYear(), 2, 15), hodnota: 180, pocetPoloziek: 3 },
+        { date: new Date(now.getFullYear(), 3, 15), hodnota: 210, pocetPoloziek: 4 }
+      ];
+      setAllData(mockData);
+      setCards([
+        { id: 'mock-1', status: 'zbierka', buy: 180, current: 320 },
+        { id: 'mock-2', status: 'zbierka', buy: 25, current: 40 },
+        { id: 'mock-3', status: 'predaná', buy: 210, soldPrice: 295 },
+        { id: 'mock-4', status: 'zbierka', buy: 8, current: 12 }
+      ]);
+      setLoading(false);
+      return;
+    }
     if (!user) return;
 
     const loadPortfolioHistory = async () => {
@@ -78,7 +96,7 @@ function PortfolioChart({ user, darkMode = false }) {
               date: saleDate,
               cardId: card.id,
               type: 'sale',
-              price: card.soldPrice || card.sell || card.current || 0,
+              price: card.soldPrice || card.current || 0,
               cardName: card.item
             });
           }
@@ -214,7 +232,7 @@ function PortfolioChart({ user, darkMode = false }) {
     const soldCards = cards.filter(c => c.status === 'predaná');
 
     const totalInvested = cards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0), 0);
-    const totalSold = soldCards.reduce((sum, c) => sum + (parseFloat(c.soldPrice) || parseFloat(c.sell) || 0), 0);
+    const totalSold = soldCards.reduce((sum, c) => sum + (parseFloat(c.soldPrice) || 0), 0);
     const soldCost = soldCards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0), 0);
     const realizedProfit = totalSold - soldCost;
 

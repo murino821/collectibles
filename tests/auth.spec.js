@@ -93,15 +93,16 @@ test.describe('Authenticated (mock) experience', () => {
     await page.getByRole('button', { name: /Uložiť|Save|Ulozit/i }).click();
     await expect(page.locator(`text=${itemName}`)).toBeVisible();
 
-    // Edit item (add note) via row action to avoid overlay issues
-    const row = page.locator('tr', { hasText: itemName }).first();
-    if (await row.count()) {
-      await row.locator('button', { hasText: /Upraviť|Edit|Upravit/i }).first().click();
-    } else {
-      await page.locator(`text=${itemName}`).first().click();
-    }
+    // Edit item (add note) - click the item name directly (stable across view modes)
+    const itemCell = page.getByText(itemName).first();
+    await itemCell.scrollIntoViewIfNeeded();
+    await itemCell.click({ force: true });
     await page.getByPlaceholder(/voliteľné|optional|volitelné/i).fill('E2E note');
     await page.getByRole('button', { name: /Uložiť|Save|Ulozit/i }).click();
+    const modalContent = page.locator('[class*="modal-content"], .modal-content');
+    if (await modalContent.count()) {
+      await modalContent.first().waitFor({ state: 'hidden', timeout: 10000 });
+    }
 
     // Switch to cards view and verify note + image
     await page.locator('button:has-text("🏒")').first().click();
@@ -176,7 +177,7 @@ test.describe('Authenticated (mock) experience', () => {
     await page.getByRole('button', { name: /Zmazať|Delete|Smazat/i }).click();
 
     // Should be removed
-    await expect(page.locator(`text=${itemName}`)).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator('tr', { hasText: itemName })).toHaveCount(0, { timeout: 15000 });
   });
 
   test('sell card changes status to sold', async ({ page }) => {

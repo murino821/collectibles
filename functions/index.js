@@ -2,6 +2,7 @@
  * Firebase Cloud Functions for NHL Cards Collection
  * Automatic price updates using eBay Browse API
  */
+// Deploy bump: 2026-02-02
 
 const functions = require("firebase-functions/v1");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");

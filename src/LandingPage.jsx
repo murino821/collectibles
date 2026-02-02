@@ -4,7 +4,7 @@ import TopCards from './assets/components/TopCards';
 import LanguageSwitcher from './assets/components/LanguageSwitcher';
 import { t, getCurrentLanguage } from './translations';
 
-function LandingPage({ onLoginClick, onCollectorsClick }) {
+function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsClick, onPrivacyClick }) {
   const [activeFeature, setActiveFeature] = useState(0);
   const lang = getCurrentLanguage();
 
@@ -237,7 +237,7 @@ function LandingPage({ onLoginClick, onCollectorsClick }) {
                 <h4>{t('landing.footer.product', lang)}</h4>
                 <ul>
                   <li><a href="#features">{t('landing.footer.features', lang)}</a></li>
-                  <li><a href="#how-it-works">{t('landing.footer.howto', lang)}</a></li>
+                  <li><a href="#" onClick={(e) => { e.preventDefault(); onHowtoClick(); }}>{t('landing.footer.howto', lang)}</a></li>
                 </ul>
               </div>
               <div className="footer-section">
@@ -249,8 +249,8 @@ function LandingPage({ onLoginClick, onCollectorsClick }) {
               <div className="footer-section">
                 <h4>{t('landing.footer.legal', lang)}</h4>
                 <ul>
-                  <li><a href="#">{t('landing.footer.terms', lang)}</a></li>
-                  <li><a href="#">{t('landing.footer.privacy', lang)}</a></li>
+                  <li><a href="#" onClick={(e) => { e.preventDefault(); onTermsClick(); }}>{t('landing.footer.terms', lang)}</a></li>
+                  <li><a href="#" onClick={(e) => { e.preventDefault(); onPrivacyClick(); }}>{t('landing.footer.privacy', lang)}</a></li>
                 </ul>
               </div>
             </div>

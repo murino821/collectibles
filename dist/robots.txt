@@ -1,0 +1,18 @@
+# Hockey Cards Collection - robots.txt
+# https://your-card-collection-2026.web.app/
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://your-card-collection-2026.web.app/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1
+
+# Disallow admin pages
+Disallow: /admin_panel.html
+Disallow: /admin_logs.html
+Disallow: /update_schedule.html
+Disallow: /set_admin_role.html
+Disallow: /trigger_manual_update.html

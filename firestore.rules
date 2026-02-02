@@ -49,7 +49,7 @@ service cloud.firestore {
              && data.item.size() > 0
              && data.item.size() <= 500
              && data.userId is string
-             && data.status in ['zbierka', 'predane', 'wishlist']
+             && data.status in ['zbierka', 'predaná', 'predane', 'wishlist']
              // Prevent massive note fields (max 2000 chars)
              && (!('note' in data) || data.note.size() <= 2000)
              // Prevent massive imageUrl (max 1000 chars)
@@ -57,7 +57,7 @@ service cloud.firestore {
              // Validate price fields are reasonable (max 10 million)
              && (!('buy' in data) || data.buy == null || (data.buy >= 0 && data.buy <= 10000000))
              && (!('current' in data) || data.current == null || (data.current >= 0 && data.current <= 10000000))
-             && (!('sell' in data) || data.sell == null || (data.sell >= 0 && data.sell <= 10000000));
+             && (!('soldPrice' in data) || data.soldPrice == null || (data.soldPrice >= 0 && data.soldPrice <= 10000000));
     }
 
     // Validate user profile data

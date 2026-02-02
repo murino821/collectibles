@@ -1,7 +1,13 @@
 import { useState } from 'react';
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 import './LoginModal.css';
+
+const isInAppBrowser = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /FBAN|FBAV|Instagram|Line|Twitter|LinkedIn|Snapchat|Pinterest|TikTok/i.test(ua);
+};
 
 function Login({ isOpen, onClose }) {
   const [error, setError] = useState('');
@@ -12,11 +18,25 @@ function Login({ isOpen, onClose }) {
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
+      if (isInAppBrowser()) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
       await signInWithPopup(auth, googleProvider);
       setError('');
       if (onClose) onClose();
     } catch (err) {
-      setError('Chyba pri prihlásení: ' + err.message);
+      if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/popup-closed-by-user') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr) {
+          setError('Chyba pri prihlásení: ' + redirectErr.message);
+        }
+      } else {
+        setError('Chyba pri prihlásení: ' + err.message);
+      }
       console.error('Chyba:', err);
     } finally {
       setIsLoading(false);

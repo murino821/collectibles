@@ -669,6 +669,7 @@ function CardManager({ user }) {
                 style={{
                   ...styles.button,
                   flex: 1,
+                  minWidth: 0,
                   background: darkMode ? '#1e293b' : '#fff',
                   color: darkMode ? '#f8fafc' : '#0f172a',
                   fontSize: '16px'
@@ -718,6 +719,8 @@ function CardManager({ user }) {
                   display: 'flex',
                   gap: '4px',
                   flex: '1 1 calc(50% - 4px)',
+                  minWidth: 0,
+                  flexWrap: 'wrap',
                   background: darkMode ? '#334155' : '#f3f4f6',
                   borderRadius: '12px',
                   padding: '4px'
@@ -759,12 +762,13 @@ function CardManager({ user }) {
                     ...styles.button,
                     background: showPortfolioChart ? '#667eea' : darkMode ? '#334155' : '#f3f4f6',
                     color: showPortfolioChart ? 'white' : darkMode ? '#f8fafc' : '#0f172a',
-                    flex: '1 1 calc(50% - 4px)'
+                    flex: '1 1 calc(50% - 4px)',
+                    minWidth: 0
                   }}
                 >
                   {showPortfolioChart ? `📉 ${t('manager.chart.hide')}` : `📈 ${t('manager.chart.show')}`}
                 </button>
-                <div style={{ flex: '1 1 calc(50% - 4px)' }}>
+                <div style={{ flex: '1 1 calc(50% - 4px)', minWidth: 0 }}>
                   <ImportCSV onImportComplete={() => {}} />
                 </div>
               </div>
@@ -786,7 +790,7 @@ function CardManager({ user }) {
             <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', color: '#64748b' }}>{cards.length === 0 ? `📋 ${t('manager.empty')}` : `🔍 ${t('manager.noResults')}`}</div>
           ) : (
             filteredCards.map((card) => (
-              <div key={card.id} style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div className="card-item" key={card.id} style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {card.imageUrl && <img src={card.imageUrl} alt="foto" style={{ width: '100%', height: '180px', objectFit: 'contain', borderRadius: '8px', cursor: 'pointer', background: darkMode ? '#0f172a' : '#f8fafc' }} onClick={(e) => { e.stopPropagation(); setImageModalUrl(card.imageUrl); }} />}
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{card.item}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px' }}>
@@ -1012,7 +1016,7 @@ function CardManager({ user }) {
 
       {showModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: isDesktop ? '20px' : '12px' }} onClick={() => setShowModal(false)}>
-          <div style={{ background: darkMode ? '#1e293b' : 'white', color: darkMode ? '#f8fafc' : '#0f172a', borderRadius: '16px', width: '100%', maxWidth: isDesktop ? '680px' : '100%', maxHeight: isDesktop ? 'none' : 'calc(100vh - 24px)', overflowY: isDesktop ? 'visible' : 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" style={{ background: darkMode ? '#1e293b' : 'white', color: darkMode ? '#f8fafc' : '#0f172a', borderRadius: '16px', width: '100%', maxWidth: isDesktop ? '680px' : '100%', maxHeight: isDesktop ? 'none' : 'calc(100vh - 24px)', overflowY: isDesktop ? 'visible' : 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)' }} onClick={(e) => e.stopPropagation()}>
             {/* Header */}
             <div style={{ padding: isDesktop ? '16px 24px' : '14px 16px', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong style={{ fontSize: '18px' }}>{editingCard ? t('manager.modal.edit') : t('manager.modal.add')}</strong>

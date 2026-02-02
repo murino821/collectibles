@@ -1,10 +1,10 @@
-/* Collectors Page Styles */
+/* Collectors Page Styles - Mobile First */
 
 .collectors-page {
   min-height: 100vh;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   color: white;
-  padding: 2rem;
+  padding: 1rem;
 }
 
 .collectors-header {
@@ -55,7 +55,7 @@
   max-width: 1200px;
   margin: 0 auto 3rem;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: 1fr;
   gap: 1.5rem;
 }
 
@@ -64,7 +64,7 @@
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
-  padding: 2rem;
+  padding: 1.5rem;
   text-align: center;
 }
 
@@ -95,8 +95,8 @@
 
 .collector-card {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
-  gap: 1.5rem;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
   align-items: center;
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
@@ -112,19 +112,23 @@
 }
 
 .collector-rank {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 800;
   color: #fbbf24;
-  min-width: 50px;
+  min-width: 40px;
   text-align: center;
+  grid-column: 1;
+  grid-row: 1 / 3;
 }
 
 .collector-avatar {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   overflow: hidden;
   border: 3px solid rgba(255, 255, 255, 0.3);
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .collector-avatar img {
@@ -147,6 +151,8 @@
 
 .collector-info {
   flex: 1;
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .collector-name {
@@ -167,7 +173,12 @@
 }
 
 .collector-value {
-  text-align: right;
+  text-align: center;
+  grid-column: 1 / 3;
+  grid-row: 3;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .value-label {
@@ -236,72 +247,10 @@
   margin: 0;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .collectors-page {
-    padding: 1rem;
-  }
-
-  .collector-card {
-    grid-template-columns: auto 1fr;
-    gap: 1rem;
-  }
-
-  .collector-rank {
-    grid-column: 1;
-    grid-row: 1 / 3;
-    font-size: 1.25rem;
-    min-width: 40px;
-  }
-
-  .collector-avatar {
-    width: 50px;
-    height: 50px;
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .collector-info {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .collector-value {
-    grid-column: 1 / 3;
-    grid-row: 3;
-    text-align: center;
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .collectors-stats {
-    grid-template-columns: 1fr;
-  }
-
-  .stat-card {
-    padding: 1.5rem;
-  }
-
-  .donate-section {
-    margin-top: 2rem;
-  }
-
-  .donate-button {
-    font-size: 1rem;
-    padding: 1rem 2rem;
-  }
-
-  .donate-button svg {
-    width: 20px;
-    height: 20px;
-  }
-}
-
-/* Donate Section */
+/* Donate Section - Mobile First */
 .donate-section {
   max-width: 800px;
-  margin: 4rem auto 2rem;
+  margin: 2rem auto;
   padding: 0 1rem;
 }
 
@@ -354,12 +303,12 @@
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 1.25rem 3rem;
+  padding: 1rem 2rem;
   background: linear-gradient(135deg, #0070ba 0%, #003087 100%);
   color: white;
   border: none;
   border-radius: 50px;
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -378,8 +327,8 @@
 }
 
 .donate-button svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 
 .donate-note {
@@ -387,4 +336,66 @@
   opacity: 0.7;
   margin: 1.5rem 0 0;
   font-style: italic;
+}
+
+/* Desktop styles */
+@media (min-width: 768px) {
+  .collectors-page {
+    padding: 2rem;
+  }
+
+  .collectors-stats {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+
+  .stat-card {
+    padding: 2rem;
+  }
+
+  .collector-card {
+    grid-template-columns: auto auto 1fr auto;
+    gap: 1.5rem;
+  }
+
+  .collector-rank {
+    font-size: 1.5rem;
+    min-width: 50px;
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .collector-avatar {
+    width: 60px;
+    height: 60px;
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .collector-info {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .collector-value {
+    text-align: right;
+    grid-column: auto;
+    grid-row: auto;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .donate-section {
+    margin-top: 4rem;
+  }
+
+  .donate-button {
+    font-size: 1.125rem;
+    padding: 1.25rem 3rem;
+  }
+
+  .donate-button svg {
+    width: 24px;
+    height: 24px;
+  }
 }

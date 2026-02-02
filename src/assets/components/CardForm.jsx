@@ -4,7 +4,7 @@ import { useToast } from "./Toast";
 export default function CardForm({ initial, onSubmit, onCancel }) {
   const toast = useToast();
   const [form, setForm] = useState({
-    item: "", status: "zbierka", buy: "", current: "", sell: "", note: ""
+    item: "", status: "zbierka", buy: "", current: "", note: ""
   });
   const [preview, setPreview] = useState(null); // dataURL
   const fileRef = useRef(null);
@@ -16,12 +16,11 @@ export default function CardForm({ initial, onSubmit, onCancel }) {
         status: initial.status || "zbierka",
         buy: numOrEmpty(initial.buy),
         current: numOrEmpty(initial.current),
-        sell: numOrEmpty(initial.sell),
         note: initial.note || ""
       });
       setPreview(initial.photoUrl || null);
     } else {
-      setForm({ item:"", status:"zbierka", buy:"", current:"", sell:"", note:"" });
+      setForm({ item:"", status:"zbierka", buy:"", current:"", note:"" });
       setPreview(null);
     }
   }, [initial]);
@@ -45,7 +44,6 @@ export default function CardForm({ initial, onSubmit, onCancel }) {
       status: form.status,
       buy: form.buy ? Number(form.buy) : null,
       current: form.current ? Number(form.current) : null,
-      sell: form.sell ? Number(form.sell) : null,
       note: form.note.trim()
     };
     const file = fileRef.current?.files?.[0] || (preview?.startsWith("data:") ? preview : null);
@@ -60,7 +58,6 @@ export default function CardForm({ initial, onSubmit, onCancel }) {
           options={[["zbierka","zbierka"],["predaná","predaná"]]} />
         <Input label="Nákupná cena (€)" name="buy" value={form.buy} onChange={handleChange} type="number" step="0.01"/>
         <Input label="Aktuálna cena (€) - automaticky z eBay" name="current" value={form.current} disabled readOnly type="number" step="0.01" style={{backgroundColor: "#f1f5f9", color: "#64748b", cursor: "not-allowed", opacity: 0.7}}/>
-        <Input label="Predajná cena (€)" name="sell" value={form.sell} onChange={handleChange} type="number" step="0.01"/>
         <Input label="Poznámka" name="note" value={form.note} onChange={handleChange}/>
       </div>
 

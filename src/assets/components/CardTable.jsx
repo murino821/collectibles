@@ -9,7 +9,7 @@ export default function CardsTable({ items, onEdit, onDelete }) {
             <th style={th}>Položka</th>
             <th style={{...th,textAlign:"right"}}>Nákupná (€)</th>
             <th style={{...th,textAlign:"right"}}>Aktuálna (€)</th>
-            <th style={{...th,textAlign:"right"}}>Predajná (€)</th>
+            <th style={{...th,textAlign:"right"}}>Predané (€)</th>
             <th style={th}>Stav</th>
             <th style={th}>Akcie</th>
           </tr>
@@ -24,7 +24,7 @@ export default function CardsTable({ items, onEdit, onDelete }) {
               <td style={td}>{it.item}</td>
               <td style={{...td,textAlign:"right"}}>{fmt(it.buy)}</td>
               <td style={{...td,textAlign:"right"}}>{fmt(it.current)}</td>
-              <td style={{...td,textAlign:"right"}}>{fmt(it.sell)}</td>
+              <td style={{...td,textAlign:"right"}}>{it.status === 'predaná' ? fmt(it.soldPrice) : ''}</td>
               <td style={td}>{it.status}</td>
               <td style={{...td,whiteSpace:"nowrap"}}>
                 <button onClick={()=>onEdit(it)} style={btnGhost}>Upraviť</button>{" "}

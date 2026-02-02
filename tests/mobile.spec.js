@@ -1,14 +1,10 @@
 import { test, expect } from '@playwright/test';
-
-const assertNoHorizontalScroll = async (page) => {
-  const hasOverflow = await page.evaluate(() => {
-    const doc = document.documentElement;
-    return doc.scrollWidth > doc.clientWidth + 1;
-  });
-  expect(hasOverflow).toBeFalsy();
-};
+import { assertNoHorizontalScroll, navigateToFooterPage } from './helpers.js';
 
 test.describe('Mobile landing page', () => {
+  test.beforeEach(({ }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith('mobile-'), 'Mobile-only tests');
+  });
   test('loads and renders hero + CTAs', async ({ page }) => {
     await page.goto('/?mockAuth=0');
 
@@ -33,20 +29,127 @@ test.describe('Mobile landing page', () => {
     });
     expect(fitsViewport).toBeTruthy();
   });
+
+  test('footer renders all three sections', async ({ page }) => {
+    await page.goto('/?mockAuth=0');
+
+    await expect(page.locator('.footer')).toBeVisible();
+    await expect(page.locator('.footer-section')).toHaveCount(3); // Product, Community, Legal
+
+    await assertNoHorizontalScroll(page);
+  });
+
+  test('features section scrolls into view on CTA click', async ({ page }) => {
+    await page.goto('/?mockAuth=0');
+
+    // Click "Learn more" / "Zistiť viac" button
+    await page.locator('.btn-secondary', { hasText: /Zistiť|Learn|Zjistit/i }).click();
+
+    // Wait for scroll
+    await page.waitForTimeout(500);
+
+    // Features section should be in viewport
+    const featuresVisible = await page.locator('#features').isVisible();
+    expect(featuresVisible).toBeTruthy();
+  });
+
+  test('top cards section renders on landing page', async ({ page }) => {
+    await page.goto('/?mockAuth=0');
+
+    // TopCards component should be visible
+    const topCards = page.locator('text=/Top 10|Najcennejšie/i');
+    await expect(topCards.first()).toBeVisible();
+  });
+
+  test('language switcher is accessible in footer', async ({ page }) => {
+    await page.goto('/?mockAuth=0');
+
+    // Scroll to footer
+    await page.locator('.footer').scrollIntoViewIfNeeded();
+
+    // Language switcher should be visible
+    const langSwitcher = page.locator('select[title="Change language"]');
+    await expect(langSwitcher.first()).toBeVisible();
+  });
 });
 
 test.describe('Collectors page', () => {
+  test.beforeEach(({ }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith('mobile-'), 'Mobile-only tests');
+  });
   test('navigates to collectors page and shows stable layout', async ({ page }) => {
     await page.goto('/?mockAuth=0');
-    // Footer structure: Product, Community, Legal sections; Community is the 2nd section.
-    await page.locator('.footer-section').nth(1).locator('a').first().click();
+
+    // Navigate via footer
+    await navigateToFooterPage(page, 'collectors');
 
     await expect(page.locator('.collectors-page')).toBeVisible();
 
-    // Accept loading, empty, or error state, but ensure page content exists.
+    // Accept loading, empty, or error state
     const state = page.locator('.loading-container, .empty-container, .error-container, .collectors-list');
     await expect(state.first()).toBeVisible();
 
     await assertNoHorizontalScroll(page);
+  });
+
+  test('back button returns to landing page', async ({ page }) => {
+    await page.goto('/?mockAuth=0');
+
+    // Navigate to collectors
+    await navigateToFooterPage(page, 'collectors');
+    await expect(page.locator('.collectors-page')).toBeVisible();
+
+    // Click back
+    await page.locator('text=/Späť|Back|Zpět/i').first().click();
+
+    // Should be back on landing
+    await expect(page.locator('.hero')).toBeVisible();
+  });
+});
+
+test.describe('Mobile collection manager', () => {
+  test.beforeEach(({ }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith('mobile-'), 'Mobile-only tests');
+  });
+  test('collection manager loads with mock auth', async ({ page }) => {
+    await page.goto('/?mockAuth=1');
+
+    await expect(page.getByRole('heading', { name: /Moja zbierka|My Collection|Moje sbírka/i })).toBeVisible();
+    await assertNoHorizontalScroll(page);
+  });
+
+  test('add modal fits mobile viewport', async ({ page }) => {
+    await page.goto('/?mockAuth=1');
+
+    // Open add modal
+    await page.locator('button', { hasText: '+' }).first().click();
+
+    // Modal should be visible and fit viewport
+    const modalContent = page.locator('[class*="modal-content"], .modal-content').first();
+    await expect(modalContent).toBeVisible();
+
+    const fitsViewport = await modalContent.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width <= window.innerWidth;
+    });
+    expect(fitsViewport).toBeTruthy();
+  });
+
+  test('stats cards are visible on mobile', async ({ page }) => {
+    await page.goto('/?mockAuth=1');
+
+    // Stats should be visible
+    const stats = page.locator('text=/Hodnota zbierky|Collection Value|Hodnota sbírky/i');
+    await expect(stats.first()).toBeVisible();
+  });
+
+  test('view mode buttons are all visible', async ({ page }) => {
+    await page.goto('/?mockAuth=1');
+
+    // All 4 view buttons should be visible
+    await expect(page.locator('button:has-text("📋")')).toBeVisible();
+    await expect(page.locator('button:has-text("🏒")')).toBeVisible();
+    await expect(page.locator('button:has-text("🖼️")')).toBeVisible();
+    await expect(page.locator('button:has-text("📊")')).toBeVisible();
   });
 });

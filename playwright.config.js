@@ -20,6 +20,7 @@ export default defineConfig({
     timeout: 60_000,
   },
   projects: [
+    // Mobile projects
     {
       name: 'mobile-iphone-se',
       use: { ...devices['iPhone SE'] },
@@ -31,6 +32,19 @@ export default defineConfig({
     {
       name: 'mobile-pixel-5',
       use: { ...devices['Pixel 5'] },
+    },
+    // Desktop projects
+    {
+      name: 'desktop-chrome',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'desktop-firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'desktop-safari',
+      use: { ...devices['Desktop Safari'] },
     },
   ],
 });

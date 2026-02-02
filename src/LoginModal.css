@@ -1,4 +1,4 @@
-/* Login Modal Styles */
+/* Login Modal Styles - Mobile First */
 
 .login-modal-overlay {
   position: fixed;
@@ -15,7 +15,7 @@
 
 .login-modal {
   background: white;
-  border-radius: 24px;
+  border-radius: 20px;
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
@@ -23,6 +23,7 @@
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.4s ease-out;
   position: relative;
+  margin: 0.5rem;
 }
 
 .login-modal-close {
@@ -50,7 +51,7 @@
 }
 
 .login-modal-content {
-  padding: 3rem 2.5rem;
+  padding: 2.5rem 1.5rem;
   text-align: center;
 }
 
@@ -61,14 +62,14 @@
 }
 
 .login-modal-title {
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 800;
   color: #0f172a;
   margin: 0 0 1rem;
 }
 
 .login-modal-subtitle {
-  font-size: 1rem;
+  font-size: 0.9375rem;
   color: #64748b;
   line-height: 1.6;
   margin: 0 0 2.5rem;
@@ -82,12 +83,12 @@
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  padding: 1rem 2rem;
+  padding: 0.875rem 1.5rem;
   background: #4285f4;
   color: white;
   border: none;
   border-radius: 12px;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -180,27 +181,27 @@
   }
 }
 
-/* Responsive */
-@media (max-width: 640px) {
+/* Desktop styles */
+@media (min-width: 640px) {
   .login-modal {
-    border-radius: 20px;
-    margin: 0.5rem;
+    border-radius: 24px;
+    margin: 0;
   }
 
   .login-modal-content {
-    padding: 2.5rem 1.5rem;
+    padding: 3rem 2.5rem;
   }
 
   .login-modal-title {
-    font-size: 1.75rem;
+    font-size: 2rem;
   }
 
   .login-modal-subtitle {
-    font-size: 0.9375rem;
+    font-size: 1rem;
   }
 
   .login-google-button {
-    font-size: 0.9375rem;
-    padding: 0.875rem 1.5rem;
+    font-size: 1rem;
+    padding: 1rem 2rem;
   }
 }

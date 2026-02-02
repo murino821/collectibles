@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { assertNoHorizontalScroll, navigateToFooterPage } from './helpers.js';
+import { assertNoHorizontalScroll, navigateToFooterPage, login } from './helpers.js';
 
 test.describe('Mobile landing page', () => {
   test.beforeEach(({ }, testInfo) => {
@@ -112,14 +112,14 @@ test.describe('Mobile collection manager', () => {
     test.skip(!testInfo.project.name.startsWith('mobile-'), 'Mobile-only tests');
   });
   test('collection manager loads with mock auth', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     await expect(page.getByRole('heading', { name: /Moja zbierka|My Collection|Moje sbírka/i })).toBeVisible();
     await assertNoHorizontalScroll(page);
   });
 
   test('add modal fits mobile viewport', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Open add modal
     await page.locator('button', { hasText: '+' }).first().click();
@@ -136,7 +136,7 @@ test.describe('Mobile collection manager', () => {
   });
 
   test('stats cards are visible on mobile', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Stats should be visible
     const stats = page.locator('text=/Hodnota zbierky|Collection Value|Hodnota sbírky/i');
@@ -144,7 +144,7 @@ test.describe('Mobile collection manager', () => {
   });
 
   test('view mode buttons are all visible', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // All 4 view buttons should be visible
     await expect(page.locator('button:has-text("📋")')).toBeVisible();

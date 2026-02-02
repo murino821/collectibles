@@ -16,6 +16,53 @@ export const assertNoHorizontalScroll = async (page) => {
   expect(hasOverflow).toBeFalsy();
 };
 
+const fetchE2EToken = async () => {
+  const secret = process.env.E2E_SECRET;
+  if (!secret) {
+    throw new Error('E2E_SECRET is not set');
+  }
+  const origin = process.env.E2E_FUNCTIONS_ORIGIN;
+  if (!origin) {
+    throw new Error('E2E_FUNCTIONS_ORIGIN is not set');
+  }
+
+  const response = await fetch(`${origin}/mintE2ETokenV2`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ data: { secret } }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to mint E2E token: ${response.status} ${text}`);
+  }
+
+  const payload = await response.json();
+  const token = payload?.result?.token || payload?.data?.token || payload?.token;
+  if (!token) {
+    throw new Error('E2E token missing in response');
+  }
+
+  return token;
+};
+
+/**
+ * Login helper for E2E tests.
+ * Uses custom token when E2E_AUTH=1, otherwise falls back to mock auth.
+ * @param {import('@playwright/test').Page} page
+ */
+export const login = async (page) => {
+  if (process.env.E2E_AUTH === '1') {
+    const token = await fetchE2EToken();
+    await page.goto(`/?e2eToken=${encodeURIComponent(token)}`);
+    return;
+  }
+
+  await page.goto('/?mockAuth=1');
+};
+
 /**
  * Create a new card in the collection
  * @param {import('@playwright/test').Page} page

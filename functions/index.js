@@ -745,6 +745,52 @@ exports.updateNextUpdateDateV2 = onCall(async (request) => {
   }
 });
 
+exports.mintE2ETokenV2 = onCall(async (request) => {
+  const configProjectId = process.env.FIREBASE_CONFIG
+    ? JSON.parse(process.env.FIREBASE_CONFIG).projectId
+    : null;
+  const projectId = process.env.GCLOUD_PROJECT || configProjectId || "";
+  const allowedProjectId = process.env.E2E_PROJECT_ID || "your-card-collection-2026-test";
+
+  if (projectId !== allowedProjectId) {
+    throw new HttpsError("permission-denied", "E2E token minting is disabled for this project");
+  }
+
+  const secret = process.env.E2E_SECRET;
+  if (!secret) {
+    throw new HttpsError("failed-precondition", "E2E secret is not configured");
+  }
+
+  if (request.data?.secret !== secret) {
+    throw new HttpsError("unauthenticated", "Invalid E2E secret");
+  }
+
+  const uid = process.env.E2E_TEST_UID || "e2e-test-user";
+  const email = process.env.E2E_TEST_EMAIL || "e2e.test.user@example.com";
+  const displayName = process.env.E2E_TEST_NAME || "E2E Test User";
+
+  try {
+    await admin.auth().getUser(uid);
+  } catch (error) {
+    if (error?.code === "auth/user-not-found") {
+      await admin.auth().createUser({
+        uid,
+        email,
+        emailVerified: true,
+        displayName,
+      });
+    } else {
+      throw new HttpsError("internal", error.message || "Failed to load test user");
+    }
+  }
+
+  const token = await admin.auth().createCustomToken(uid, {
+    e2e: true,
+  });
+
+  return {token};
+});
+
 exports.onCardCreateV2 = onDocumentCreated("cards/{cardId}", async (event) => {
   const snap = event.data;
   if (!snap) return null;

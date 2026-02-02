@@ -1,15 +1,15 @@
 /* global Buffer */
 import { test, expect } from '@playwright/test';
-import { createCard, switchView, filterByStatus, searchCards } from './helpers.js';
+import { createCard, switchView, filterByStatus, searchCards, login } from './helpers.js';
 
 test.describe('Authenticated (mock) experience', () => {
   test('loads collection manager with stats', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
     await expect(page.getByRole('heading', { name: /Moja zbierka|My Collection|Moje sbírka/i })).toBeVisible();
   });
 
   test('language switcher shows flags only', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
     const select = page.locator('select[title="Change language"]').first();
     await expect(select).toBeVisible();
 
@@ -18,7 +18,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('view mode buttons order on mobile', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     const order = await page.evaluate(() => {
       const icons = ['📋', '🏒', '🖼️', '📊'];
@@ -35,7 +35,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('search + status + photo filters work', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Search
     await page.getByPlaceholder(/Hľadať|Search|Hledat/i).fill('Crosby');
@@ -55,7 +55,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('add, sell, delete modals open', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Add modal
     await page.locator('button', { hasText: '+' }).first().click();
@@ -73,7 +73,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('add item with attributes + photo, edit, save, and filter', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     const itemName = `E2E Test Card ${Date.now()}`;
 
@@ -107,7 +107,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('portfolio chart and image modal open', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Open chart
     await page.locator('button', { hasText: 'Graf' }).first().click();
@@ -120,7 +120,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('auth state persists across refresh (mock)', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
     await expect(page.getByRole('heading', { name: /Moja zbierka|My Collection|Moje sbírka/i })).toBeVisible();
 
     await page.reload();
@@ -128,7 +128,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('create card with minimal fields', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
     const itemName = `Minimal Card ${Date.now()}`;
 
     await createCard(page, { name: itemName, buyPrice: '10' });
@@ -137,7 +137,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('create card with all fields', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
     const itemName = `Full Card ${Date.now()}`;
 
     await createCard(page, {
@@ -156,7 +156,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('delete card removes it from list', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
     const itemName = `Delete Test ${Date.now()}`;
 
     // Create card first
@@ -172,7 +172,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('sell card changes status to sold', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Click sell on first available card
     await page.locator('button', { hasText: '💰' }).first().click();
@@ -188,7 +188,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('combined filters work correctly', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Apply search
     await searchCards(page, 'Card');
@@ -202,7 +202,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('gallery view renders thumbnails', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     await switchView(page, 'gallery');
 
@@ -212,7 +212,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('all view modes are accessible', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Table view (default)
     await switchView(page, 'table');
@@ -232,7 +232,7 @@ test.describe('Authenticated (mock) experience', () => {
   });
 
   test('language persistence after page reload', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Change language to English
     const langSelect = page.locator('select[title="Change language"]').first();

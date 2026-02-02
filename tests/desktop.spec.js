@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { assertNoHorizontalScroll, navigateToFooterPage } from './helpers.js';
+import { assertNoHorizontalScroll, navigateToFooterPage, login } from './helpers.js';
 
 // Only run these tests on desktop projects
 test.describe('Desktop landing page layout', () => {
@@ -77,7 +77,7 @@ test.describe('Desktop collection manager layout', () => {
     test.skip(!testInfo.project.name.startsWith('desktop-'), 'Desktop-only tests');
   });
   test('collection manager loads with desktop layout', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     await expect(page.getByRole('heading', { name: /Moja zbierka|My Collection|Moje sbírka/i })).toBeVisible();
 
@@ -85,7 +85,7 @@ test.describe('Desktop collection manager layout', () => {
   });
 
   test('stats cards are displayed horizontally', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Stats container should use row layout on desktop
     const statsContainer = page.locator('[class*="stats"], .stats-container').first();
@@ -100,7 +100,7 @@ test.describe('Desktop collection manager layout', () => {
   });
 
   test('table view shows all columns on desktop', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Table should be visible
     const table = page.locator('table, .card-table').first();
@@ -116,7 +116,7 @@ test.describe('Desktop collection manager layout', () => {
   });
 
   test('action buttons are visible without overflow', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Action buttons (edit, sell, delete) should be visible
     const actionButtons = page.locator('button', { hasText: /✏️|💰|🗑️/ });
@@ -133,7 +133,7 @@ test.describe('Desktop modals', () => {
     test.skip(!testInfo.project.name.startsWith('desktop-'), 'Desktop-only tests');
   });
   test('add modal is centered on desktop', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Open add modal
     await page.locator('button', { hasText: '+' }).first().click();
@@ -176,7 +176,7 @@ test.describe('Desktop modals', () => {
   });
 
   test('modal has reasonable max-width on desktop', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     await page.locator('button', { hasText: '+' }).first().click();
 
@@ -284,7 +284,7 @@ test.describe('Desktop keyboard navigation', () => {
   });
 
   test('Escape closes modal', async ({ page }) => {
-    await page.goto('/?mockAuth=1');
+    await login(page);
 
     // Open modal
     await page.locator('button', { hasText: '+' }).first().click();

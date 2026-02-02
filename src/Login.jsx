@@ -6,7 +6,17 @@ import './LoginModal.css';
 const isInAppBrowser = () => {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
-  return /FBAN|FBAV|Instagram|Line|Twitter|LinkedIn|Snapchat|Pinterest|TikTok/i.test(ua);
+  return /FBAN|FBAV|FB_IAB|Messenger|Instagram|Line|Twitter|LinkedIn|Snapchat|Pinterest|TikTok/i.test(ua);
+};
+
+const isIOS = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent || '');
+};
+
+const isMobile = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /Mobi|Android/i.test(navigator.userAgent || '');
 };
 
 function Login({ isOpen, onClose }) {
@@ -18,7 +28,8 @@ function Login({ isOpen, onClose }) {
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
-      if (isInAppBrowser()) {
+      if (isInAppBrowser() || isIOS() || isMobile()) {
+        setError('');
         await signInWithRedirect(auth, googleProvider);
         return;
       }
@@ -29,6 +40,7 @@ function Login({ isOpen, onClose }) {
     } catch (err) {
       if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/popup-closed-by-user') {
         try {
+          setError('');
           await signInWithRedirect(auth, googleProvider);
           return;
         } catch (redirectErr) {

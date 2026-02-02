@@ -7,7 +7,7 @@ import https from 'https';
 
 const PROJECT_ID = 'your-card-collection-2026';
 const REGION = 'us-central1';
-const FUNCTION_NAME = 'updateUserCollection';
+const FUNCTION_NAME = 'updateUserCollectionV2';
 
 // Firebase ID token - we'll need to get this from your browser or use custom token
 // For now, let's try the direct REST API approach

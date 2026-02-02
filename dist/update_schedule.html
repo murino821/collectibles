@@ -232,7 +232,7 @@
 
       try {
         // Call Cloud Function
-        const setScheduleForAllUsers = httpsCallable(functions, 'setScheduleForAllUsers');
+        const setScheduleForAllUsers = httpsCallable(functions, 'setScheduleForAllUsersV2');
         const result = await setScheduleForAllUsers();
 
         console.log('Result:', result.data);

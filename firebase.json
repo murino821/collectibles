@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "your-card-collection-2026",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -97,7 +98,7 @@
   "functions": {
     "source": "functions",
     "predeploy": [],
-    "runtime": "nodejs20"
+    "runtime": "nodejs22"
   },
   "firestore": {
     "rules": "firestore.rules",

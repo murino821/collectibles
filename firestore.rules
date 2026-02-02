@@ -24,20 +24,6 @@ service cloud.firestore {
     }
 
     // =============================================
-    // RATE LIMITING FUNCTIONS
-    // =============================================
-
-    // Check write rate limit - max 10 writes per minute per user
-    // Uses a rateLimit document that tracks last write timestamp
-    function isWithinWriteRateLimit() {
-      let rateLimitDoc = get(/databases/$(database)/documents/rateLimits/$(request.auth.uid));
-      // If no rate limit doc exists, allow (first write)
-      return !exists(/databases/$(database)/documents/rateLimits/$(request.auth.uid))
-             // Or if last write was more than 6 seconds ago (10 per minute = 1 per 6 sec)
-             || rateLimitDoc.data.lastWrite < request.time - duration.value(6, 's');
-    }
-
-    // =============================================
     // DATA VALIDATION FUNCTIONS
     // =============================================
 

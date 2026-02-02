@@ -150,9 +150,15 @@ test.describe('Mobile collection manager', () => {
     await login(page);
 
     // All 4 view buttons should be visible
-    await expect(page.locator('button:has-text("📋")')).toBeVisible();
-    await expect(page.locator('button:has-text("🏒")')).toBeVisible();
-    await expect(page.locator('button:has-text("🖼️")')).toBeVisible();
-    await expect(page.locator('button:has-text("📊")')).toBeVisible();
+    const buttons = [
+      page.locator('button:has-text("📋")'),
+      page.locator('button:has-text("🏒")'),
+      page.locator('button:has-text("🖼️")'),
+      page.locator('button:has-text("📊")'),
+    ];
+    for (const btn of buttons) {
+      await btn.first().scrollIntoViewIfNeeded();
+      await expect(btn.first()).toBeVisible();
+    }
   });
 });

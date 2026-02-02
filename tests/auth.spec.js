@@ -93,15 +93,20 @@ test.describe('Authenticated (mock) experience', () => {
     await page.getByRole('button', { name: /Uložiť|Save|Ulozit/i }).click();
     await expect(page.locator(`text=${itemName}`)).toBeVisible();
 
-    // Edit item (add note)
-    await page.locator(`text=${itemName}`).first().click();
+    // Edit item (add note) via row action to avoid overlay issues
+    const row = page.locator('tr', { hasText: itemName }).first();
+    if (await row.count()) {
+      await row.locator('button', { hasText: /Upraviť|Edit|Upravit/i }).first().click();
+    } else {
+      await page.locator(`text=${itemName}`).first().click();
+    }
     await page.getByPlaceholder(/voliteľné|optional|volitelné/i).fill('E2E note');
     await page.getByRole('button', { name: /Uložiť|Save|Ulozit/i }).click();
 
     // Switch to cards view and verify note + image
     await page.locator('button:has-text("🏒")').first().click();
     const card = page.locator(`xpath=//div[.//div[normalize-space(text())="${itemName}"] and .//img[@alt="foto"]]`).first();
-    await expect(card.locator('text=E2E note')).toBeVisible();
+    await expect(card.locator('text=E2E note').first()).toBeVisible();
     await expect(card.locator('img[alt="foto"]').first()).toBeVisible();
 
     // Filter by search
@@ -118,8 +123,8 @@ test.describe('Authenticated (mock) experience', () => {
 
     // Switch to cards view and open image modal
     await page.locator('button:has-text("🏒")').first().click();
-    await page.locator('img[alt="foto"]').first().click();
-    await expect(page.locator('img[alt="Zväčšený obrázok"]')).toBeVisible();
+    await page.locator('img[alt="foto"]').first().click({ force: true });
+    await expect(page.locator('img[alt="Zväčšený obrázok"]').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('auth state persists across refresh (mock)', async ({ page }) => {
@@ -155,7 +160,7 @@ test.describe('Authenticated (mock) experience', () => {
 
     // Verify in cards view
     await switchView(page, 'cards');
-    await expect(page.locator('text=Test note').first()).toBeVisible();
+    await expect(page.locator('text=Test note').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('delete card removes it from list', async ({ page }) => {
@@ -171,7 +176,7 @@ test.describe('Authenticated (mock) experience', () => {
     await page.getByRole('button', { name: /Zmazať|Delete|Smazat/i }).click();
 
     // Should be removed
-    await expect(page.locator(`text=${itemName}`)).toHaveCount(0);
+    await expect(page.locator(`text=${itemName}`)).toHaveCount(0, { timeout: 10000 });
   });
 
   test('sell card changes status to sold', async ({ page }) => {

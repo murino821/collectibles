@@ -81,10 +81,13 @@ export const login = async (page) => {
   if (process.env.E2E_AUTH === '1') {
     const token = await fetchE2EToken();
     await page.goto(`/?e2eToken=${encodeURIComponent(token)}`);
+    await page.getByRole('heading', { name: /Moja zbierka|My Collection|Moje sbírka/i }).waitFor({ timeout: 15000 });
+    await page.getByText(/Crosby|McDavid|Ovechkin/i).first().waitFor({ timeout: 15000 });
     return;
   }
 
   await page.goto('/?mockAuth=1');
+  await page.getByRole('heading', { name: /Moja zbierka|My Collection|Moje sbírka/i }).waitFor({ timeout: 10000 });
 };
 
 export const seedTestData = async () => {

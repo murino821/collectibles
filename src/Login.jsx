@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
-import { auth, googleProvider } from './firebase';
+import { auth, googleProvider, ensureAuthPersistence } from './firebase';
 import './LoginModal.css';
 
 const isInAppBrowser = () => {
@@ -28,6 +28,7 @@ function Login({ isOpen, onClose }) {
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
+      await ensureAuthPersistence();
       if (isInAppBrowser() || isIOS() || isMobile()) {
         setError('');
         await signInWithRedirect(auth, googleProvider);

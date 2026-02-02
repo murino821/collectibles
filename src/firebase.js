@@ -11,13 +11,13 @@ import { getStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBlAhlya-NNp8gCxGPBIPxxCgDa6l9AXo8",
-  authDomain: "your-card-collection-2026.firebaseapp.com",
-  projectId: "your-card-collection-2026",
-  storageBucket: "your-card-collection-2026.firebasestorage.app",
-  messagingSenderId: "620171462959",
-  appId: "1:620171462959:web:28ecb209a009d16db679da",
-  measurementId: "G-8Q7GPWY0PW"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBlAhlya-NNp8gCxGPBIPxxCgDa6l9AXo8",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "your-card-collection-2026.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "your-card-collection-2026",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "your-card-collection-2026.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "620171462959",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:620171462959:web:28ecb209a009d16db679da",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-8Q7GPWY0PW"
 };
 
 // Initialize Firebase

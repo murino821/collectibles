@@ -1,5 +1,23 @@
 {
   "projects": {
-    "default": "your-card-collection-2026"
+    "default": "your-card-collection-2026",
+    "prod": "your-card-collection-2026",
+    "test": "your-card-collection-2026-test"
+  },
+  "targets": {
+    "prod": {
+      "hosting": {
+        "prod": [
+          "your-card-collection-2026"
+        ]
+      }
+    },
+    "test": {
+      "hosting": {
+        "test": [
+          "your-card-collection-2026-test"
+        ]
+      }
+    }
   }
 }

@@ -3,10 +3,10 @@
  * Automatic price updates using eBay Browse API
  */
 
+const functions = require("firebase-functions/v1");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
-const {onUserCreated} = require("firebase-functions/v2/identity");
 const admin = require("firebase-admin");
 admin.initializeApp();
 
@@ -294,6 +294,84 @@ async function findFreeTimeSlot() {
 
   return {dayOfMonth, hour, nextUpdate};
 }
+
+exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
+  console.log(`👤 New user created: ${user.uid}`);
+
+  try {
+    // Find a free time slot with collision detection
+    const {dayOfMonth, hour, nextUpdate} = await findFreeTimeSlot();
+
+    // Determine user role (default: standard)
+    // Admin users must be set manually after creation
+    const userRole = "standard";
+
+    // Role-based configuration
+    // Standard users: NO eBay price updates (manual entry only)
+    // Premium/Admin: Automatic eBay price updates
+    const roleConfig = {
+      standard: {
+        cardLimit: 20,
+        updateIntervalDays: 0, // No automatic eBay updates
+        updatesPerMonth: 0, // No eBay updates - manual price entry only
+        ebayUpdatesEnabled: false,
+      },
+      premium: {
+        cardLimit: 999999, // unlimited
+        updateIntervalDays: 15, // 2x per month
+        updatesPerMonth: 2,
+        ebayUpdatesEnabled: true,
+      },
+      admin: {
+        cardLimit: 999999, // unlimited
+        updateIntervalDays: 15, // 2x per month
+        updatesPerMonth: 2,
+        ebayUpdatesEnabled: true,
+      },
+    };
+
+    const config = roleConfig[userRole];
+
+    // Create user document
+    await db.collection("users").doc(user.uid).set({
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+
+      // User role and subscription
+      role: userRole, // 'admin', 'premium', 'standard'
+      subscriptionStatus: "active",
+      subscriptionStartDate: admin.firestore.FieldValue.serverTimestamp(),
+
+      // Price update settings (eBay)
+      // Standard users have this disabled - they can only manually enter prices
+      priceUpdatesEnabled: config.ebayUpdatesEnabled,
+      ebayUpdatesEnabled: config.ebayUpdatesEnabled,
+      updateDayOfMonth: config.ebayUpdatesEnabled ? dayOfMonth : null,
+      updateHourOfDay: config.ebayUpdatesEnabled ? hour : null,
+      nextUpdateDate: config.ebayUpdatesEnabled ? nextUpdate : null,
+      updateIntervalDays: config.updateIntervalDays,
+      updatesPerMonth: config.updatesPerMonth,
+
+      // Limits based on role
+      cardLimit: config.cardLimit,
+      currentCardCount: 0,
+
+      // Notifications
+      emailNotifications: false,
+      inAppNotifications: true,
+
+      // Timestamps
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(`✅ User ${user.uid} initialized with schedule: Day ${dayOfMonth}, Hour ${hour}`);
+  } catch (error) {
+    console.error("Error creating user document:", error);
+    // Don't throw - user can still use the app
+  }
+});
 
 // =========================================================
 // V2 FUNCTIONS (parallel to v1, for Node 22 migration)
@@ -722,66 +800,5 @@ exports.onCardCreateV2 = onDocumentCreated("cards/{cardId}", async (event) => {
   } catch (error) {
     console.error("Error checking card limit:", error);
     return null;
-  }
-});
-
-exports.onUserCreateV2 = onUserCreated(async (event) => {
-  const user = event.data;
-  if (!user) return;
-  console.log(`👤 New user created: ${user.uid} (v2)`);
-
-  try {
-    const {dayOfMonth, hour, nextUpdate} = await findFreeTimeSlot();
-
-    const userRole = "standard";
-
-    const roleConfig = {
-      standard: {
-        cardLimit: 20,
-        updateIntervalDays: 0,
-        updatesPerMonth: 0,
-        ebayUpdatesEnabled: false,
-      },
-      premium: {
-        cardLimit: 999999,
-        updateIntervalDays: 15,
-        updatesPerMonth: 2,
-        ebayUpdatesEnabled: true,
-      },
-      admin: {
-        cardLimit: 999999,
-        updateIntervalDays: 15,
-        updatesPerMonth: 2,
-        ebayUpdatesEnabled: true,
-      },
-    };
-
-    const config = roleConfig[userRole];
-
-    await db.collection("users").doc(user.uid).set({
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      role: userRole,
-      subscriptionStatus: "active",
-      subscriptionStartDate: admin.firestore.FieldValue.serverTimestamp(),
-      priceUpdatesEnabled: config.ebayUpdatesEnabled,
-      ebayUpdatesEnabled: config.ebayUpdatesEnabled,
-      updateDayOfMonth: config.ebayUpdatesEnabled ? dayOfMonth : null,
-      updateHourOfDay: config.ebayUpdatesEnabled ? hour : null,
-      nextUpdateDate: config.ebayUpdatesEnabled ? nextUpdate : null,
-      updateIntervalDays: config.updateIntervalDays,
-      updatesPerMonth: config.updatesPerMonth,
-      cardLimit: config.cardLimit,
-      currentCardCount: 0,
-      emailNotifications: false,
-      inAppNotifications: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    console.log(`✅ User ${user.uid} initialized with schedule: Day ${dayOfMonth}, Hour ${hour} (v2)`);
-  } catch (error) {
-    console.error("Error creating user document (v2):", error);
   }
 });

@@ -18,6 +18,14 @@
           "your-card-collection-2026-test"
         ]
       }
+    },
+    "your-card-collection-2026-test": {
+      "hosting": {
+        "test": [
+          "your-card-collection-2026-test"
+        ]
+      }
     }
-  }
+  },
+  "etags": {}
 }

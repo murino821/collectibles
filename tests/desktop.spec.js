@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { assertNoHorizontalScroll, navigateToFooterPage, login } from './helpers.js';
+import { assertNoHorizontalScroll, navigateToFooterPage, login, seedTestData } from './helpers.js';
 
 // Only run these tests on desktop projects
 test.describe('Desktop landing page layout', () => {
@@ -75,6 +75,9 @@ test.describe('Desktop landing page layout', () => {
 test.describe('Desktop collection manager layout', () => {
   test.beforeEach(({ }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith('desktop-'), 'Desktop-only tests');
+  });
+  test.beforeEach(async () => {
+    await seedTestData();
   });
   test('collection manager loads with desktop layout', async ({ page }) => {
     await login(page);

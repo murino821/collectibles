@@ -791,6 +791,99 @@ exports.mintE2ETokenV2 = onCall(async (request) => {
   return {token};
 });
 
+exports.seedE2EDataV2 = onCall(async (request) => {
+  const configProjectId = process.env.FIREBASE_CONFIG
+    ? JSON.parse(process.env.FIREBASE_CONFIG).projectId
+    : null;
+  const projectId = process.env.GCLOUD_PROJECT || configProjectId || "";
+  const allowedProjectId = process.env.E2E_PROJECT_ID || "your-card-collection-2026-test";
+
+  if (projectId !== allowedProjectId) {
+    throw new HttpsError("permission-denied", "E2E data seeding is disabled for this project");
+  }
+
+  const secret = process.env.E2E_SECRET;
+  if (!secret) {
+    throw new HttpsError("failed-precondition", "E2E secret is not configured");
+  }
+
+  if (request.data?.secret !== secret) {
+    throw new HttpsError("unauthenticated", "Invalid E2E secret");
+  }
+
+  const uid = process.env.E2E_TEST_UID || "e2e-test-user";
+
+  const cardsRef = db.collection("cards");
+  const userRef = db.collection("users").doc(uid);
+
+  // Remove existing cards for clean deterministic state
+  const existing = await cardsRef.where("userId", "==", uid).get();
+  const deleteBatch = db.batch();
+  existing.docs.forEach((doc) => deleteBatch.delete(doc.ref));
+  await deleteBatch.commit();
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const cards = [
+    {
+      id: "e2e-crosby",
+      data: {
+        userId: uid,
+        item: "Crosby Rookie",
+        buyPrice: 10,
+        currentPrice: 25,
+        status: "zbierka",
+        note: "E2E note",
+        photo: "https://example.com/e2e-crosby.jpg",
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+    {
+      id: "e2e-mcdavid",
+      data: {
+        userId: uid,
+        item: "McDavid Young Guns",
+        buyPrice: 15,
+        currentPrice: 30,
+        status: "zbierka",
+        note: "",
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+    {
+      id: "e2e-sold",
+      data: {
+        userId: uid,
+        item: "Ovechkin Sold",
+        buyPrice: 20,
+        currentPrice: 40,
+        soldPrice: 50,
+        status: "predaná",
+        note: "Sold card",
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+  ];
+
+  const setBatch = db.batch();
+  cards.forEach((card) => {
+    setBatch.set(cardsRef.doc(card.id), card.data);
+  });
+  await setBatch.commit();
+
+  await userRef.set(
+    {
+      currentCardCount: 2,
+      updatedAt: now,
+    },
+    {merge: true},
+  );
+
+  return {success: true, count: cards.length};
+});
+
 exports.onCardCreateV2 = onDocumentCreated("cards/{cardId}", async (event) => {
   const snap = event.data;
   if (!snap) return null;

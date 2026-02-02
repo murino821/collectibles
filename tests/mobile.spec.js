@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { assertNoHorizontalScroll, navigateToFooterPage, login } from './helpers.js';
+import { assertNoHorizontalScroll, navigateToFooterPage, login, seedTestData } from './helpers.js';
 
 test.describe('Mobile landing page', () => {
   test.beforeEach(({ }, testInfo) => {
@@ -110,6 +110,9 @@ test.describe('Collectors page', () => {
 test.describe('Mobile collection manager', () => {
   test.beforeEach(({ }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith('mobile-'), 'Mobile-only tests');
+  });
+  test.beforeEach(async () => {
+    await seedTestData();
   });
   test('collection manager loads with mock auth', async ({ page }) => {
     await login(page);

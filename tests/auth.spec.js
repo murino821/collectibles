@@ -1,8 +1,11 @@
 /* global Buffer */
 import { test, expect } from '@playwright/test';
-import { createCard, switchView, filterByStatus, searchCards, login } from './helpers.js';
+import { createCard, switchView, filterByStatus, searchCards, login, seedTestData } from './helpers.js';
 
 test.describe('Authenticated (mock) experience', () => {
+  test.beforeEach(async () => {
+    await seedTestData();
+  });
   test('loads collection manager with stats', async ({ page }) => {
     await login(page);
     await expect(page.getByRole('heading', { name: /Moja zbierka|My Collection|Moje sbírka/i })).toBeVisible();

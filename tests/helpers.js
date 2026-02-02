@@ -48,6 +48,30 @@ const fetchE2EToken = async () => {
   return token;
 };
 
+const seedE2EData = async () => {
+  if (process.env.E2E_AUTH !== '1') {
+    return;
+  }
+  const secret = process.env.E2E_SECRET;
+  const origin = process.env.E2E_FUNCTIONS_ORIGIN;
+  if (!secret || !origin) {
+    throw new Error('E2E_SECRET or E2E_FUNCTIONS_ORIGIN is not set');
+  }
+
+  const response = await fetch(`${origin}/seedE2EDataV2`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ data: { secret } }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to seed E2E data: ${response.status} ${text}`);
+  }
+};
+
 /**
  * Login helper for E2E tests.
  * Uses custom token when E2E_AUTH=1, otherwise falls back to mock auth.
@@ -61,6 +85,10 @@ export const login = async (page) => {
   }
 
   await page.goto('/?mockAuth=1');
+};
+
+export const seedTestData = async () => {
+  await seedE2EData();
 };
 
 /**

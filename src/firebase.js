@@ -33,18 +33,18 @@ if (typeof window !== 'undefined') {
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
 
-  // Initialize App Check with reCAPTCHA Enterprise
-  // Replace 'YOUR_RECAPTCHA_SITE_KEY' with actual key from Google Cloud Console
-  // To enable: Firebase Console > App Check > Register your app
-  try {
-    initializeAppCheck(app, {
-      provider: new ReCaptchaEnterpriseProvider('YOUR_RECAPTCHA_SITE_KEY'),
-      isTokenAutoRefreshEnabled: true
-    });
-    console.log('✅ Firebase App Check initialized');
-  } catch (error) {
-    // App Check is optional - app will work without it but with less protection
-    console.warn('⚠️ App Check not configured:', error.message);
+  const appCheckKey = import.meta.env.VITE_APPCHECK_SITE_KEY;
+  if (appCheckKey) {
+    try {
+      initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(appCheckKey),
+        isTokenAutoRefreshEnabled: true
+      });
+      console.log('✅ Firebase App Check initialized');
+    } catch (error) {
+      // App Check is optional - app will work without it but with less protection
+      console.warn('⚠️ App Check not configured:', error.message);
+    }
   }
 }
 

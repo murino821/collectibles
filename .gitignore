@@ -64,6 +64,8 @@ node_modules/
 
 # dotenv environment variables file
 .env
+.env.production
+.env.test
 functions/.env
 
 # dataconnect generated files
@@ -74,3 +76,6 @@ admin_panel.html
 admin_logs.html
 set_admin_role.html
 trigger_manual_update.html
+
+# Playwright artifacts
+test-results/

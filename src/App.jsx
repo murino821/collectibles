@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { onAuthStateChanged, getRedirectResult, signInWithCustomToken } from 'firebase/auth';
+import { onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { auth, ensureAuthPersistence } from './firebase';
 import LandingPage from './LandingPage';
 import Login from './Login';
@@ -70,17 +70,6 @@ function App() {
     const handleRedirect = async () => {
       try {
         await ensureAuthPersistence();
-        if (typeof window !== 'undefined' && import.meta.env.VITE_E2E_AUTH === '1') {
-          const params = new URLSearchParams(window.location.search);
-          const token = params.get('e2eToken');
-          if (token) {
-            await signInWithCustomToken(auth, token);
-            params.delete('e2eToken');
-            const nextQuery = params.toString();
-            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
-            window.history.replaceState({}, '', nextUrl);
-          }
-        }
         await getRedirectResult(auth);
       } catch (err) {
         console.error('Redirect login error:', err);

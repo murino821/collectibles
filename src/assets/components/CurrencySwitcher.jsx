@@ -1,14 +1,14 @@
 import { useCurrency } from '../../CurrencyContext';
 import { useLanguage } from '../../LanguageContext';
 
-function CurrencySwitcher({ darkMode }) {
+function CurrencySwitcher({ darkMode, isDesktop }) {
   const { currency, setCurrency } = useCurrency();
   const { t } = useLanguage();
 
   const currencies = [
-    { code: 'EUR', label: 'EUR €' },
-    { code: 'USD', label: 'USD $' },
-    { code: 'CZK', label: 'CZK Kč' }
+    { code: 'EUR', label: isDesktop ? 'EUR €' : '€' },
+    { code: 'USD', label: isDesktop ? 'USD $' : '$' },
+    { code: 'CZK', label: isDesktop ? 'CZK Kč' : 'Kč' }
   ];
 
   return (
@@ -21,7 +21,7 @@ function CurrencySwitcher({ darkMode }) {
           background: darkMode ? '#334155' : 'white',
           color: darkMode ? 'white' : '#0f172a',
           borderColor: darkMode ? '#475569' : '#e2e8f0',
-          width: '74px',
+          width: isDesktop ? '74px' : '44px',
           paddingRight: '6px'
         }}
         title={t('currency.switcher')}
@@ -54,4 +54,3 @@ const styles = {
 };
 
 export default CurrencySwitcher;
-

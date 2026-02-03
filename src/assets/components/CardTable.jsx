@@ -14,7 +14,7 @@ export default function CardsTable({ items, onEdit, onDelete }) {
             <th style={th}>Položka</th>
             <th style={{...th,textAlign:"right"}}>Nákupná ({currency})</th>
             <th style={{...th,textAlign:"right"}}>Aktuálna ({currency})</th>
-            <th style={{...th,textAlign:"right"}}>Predané ({currency})</th>
+            <th style={{...th,textAlign:"right"}}>Predaná ({currency})</th>
             <th style={th}>Stav</th>
             <th style={th}>Akcie</th>
           </tr>

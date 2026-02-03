@@ -21,7 +21,7 @@ Osobná aplikácia pre správu zbierky hokejových kariet:
 ### Technical Role
 Senior JavaScript/React engineer delivering production-ready code.
 - Vždy analyzuj existujúci kód pred navrhovaním zmien
-- Mysli E2E - zváž závislosti naprieč celým projektom
+- Mysli systémovo - zváž závislosti naprieč celým projektom
 - Architektonické zmeny vyžadujú explicitné schválenie pred implementáciou
 
 ### Domain Role
@@ -42,7 +42,7 @@ Senior JavaScript/React engineer delivering production-ready code.
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  1. USER → Claude Code      Prompt s popisom problému           │
-│  2. Claude Code             E2E analýza + návrh + tasklist      │
+│  2. Claude Code             Analýza + návrh + tasklist          │
 │  3. USER                    Rozhodnutie o prioritách/úlohách    │
 │  4. Claude Code             Implementácia úloh                  │
 │  5. Claude Code             lint → build → localhost test       │
@@ -62,7 +62,7 @@ Senior JavaScript/React engineer delivering production-ready code.
 | Krok | Kto | Čo sa deje |
 |------|-----|------------|
 | 1 | USER | Napíše prompt s popisom problému/požiadavky |
-| 2 | Claude Code | Pripraví E2E analýzu, návrh riešenia, aktualizuje tasklist |
+| 2 | Claude Code | Pripraví analýzu, návrh riešenia, aktualizuje tasklist |
 | 3 | USER | Schváli/upraví priority a vyberie úlohy na implementáciu |
 
 #### Fáza 4-5: IMPLEMENTÁCIA

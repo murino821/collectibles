@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && (cp admin_panel.html update_schedule.html admin_logs.html set_admin_role.html dist/ 2>/dev/null || true)",
-    "build:test": "vite build --mode test && (cp admin_panel.html update_schedule.html admin_logs.html set_admin_role.html dist/ 2>/dev/null || true)",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -17,7 +16,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
-    "@playwright/test": "^1.58.1",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",

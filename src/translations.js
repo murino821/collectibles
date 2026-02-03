@@ -43,6 +43,10 @@ export const translations = {
     'landing.footer.terms': 'Podmienky použitia',
     'landing.footer.privacy': 'Ochrana súkromia',
     'landing.footer.rights': 'Všetky práva vyhradené.',
+    'landing.globalValue.title': 'Globálna hodnota zbierok',
+    'landing.globalValue.subtitle': 'Aktuálna suma všetkých verejných zbierok',
+    'landing.globalValue.label': 'Celková hodnota',
+    'landing.globalValue.items': 'položiek',
 
     // Top Cards
     'topcards.title': 'Top 10 položiek od našich zberateľov',
@@ -92,7 +96,7 @@ export const translations = {
     'manager.filter.all': 'všetko',
     'manager.filter.collection': 'zbierka',
     'manager.filter.sold': 'predaná',
-    'manager.filter.allPhotos': 'všetky fotky',
+    'manager.filter.allPhotos': 'všetko',
     'manager.filter.withPhoto': 'len s fotkou',
     'manager.sort.item': 'Položka',
     'manager.sort.buy': 'Nákupná',
@@ -113,7 +117,7 @@ export const translations = {
     'manager.table.buyPrice': 'Nákupná',
     'manager.table.currentPrice': 'Aktuálna',
     'manager.table.quantity': 'Kusy',
-    'manager.table.soldPrice': 'Predané',
+    'manager.table.soldPrice': 'Predaná',
     'manager.table.status': 'Stav',
     'manager.table.actions': 'Akcie',
     'manager.card.buy': 'Nákup:',
@@ -165,9 +169,9 @@ export const translations = {
     'manager.actions.delete': 'Zmazať',
     'manager.actions.showChart': 'Zobraziť vývoj ceny',
     'manager.actions.hideChart': 'Skryť graf',
-    'manager.bulk.apply': 'Použiť',
     'manager.bulk.public': 'Verejné',
     'manager.bulk.private': 'Súkromné',
+    'manager.bulk.selectAll': 'Vybrať všetky',
 
     // Price History Chart
     'chart.title': 'Vývoj ceny',
@@ -328,6 +332,10 @@ export const translations = {
     'landing.footer.terms': 'Terms of Use',
     'landing.footer.privacy': 'Privacy Policy',
     'landing.footer.rights': 'All rights reserved.',
+    'landing.globalValue.title': 'Global Collection Value',
+    'landing.globalValue.subtitle': 'Current total of all public collections',
+    'landing.globalValue.label': 'Total value',
+    'landing.globalValue.items': 'items',
 
     // Top Cards
     'topcards.title': 'Top 10 Items from Our Collectors',
@@ -377,7 +385,7 @@ export const translations = {
     'manager.filter.all': 'all',
     'manager.filter.collection': 'collection',
     'manager.filter.sold': 'sold',
-    'manager.filter.allPhotos': 'all photos',
+    'manager.filter.allPhotos': 'all',
     'manager.filter.withPhoto': 'with photo only',
     'manager.sort.item': 'Item',
     'manager.sort.buy': 'Buy',
@@ -450,9 +458,9 @@ export const translations = {
     'manager.actions.delete': 'Delete',
     'manager.actions.showChart': 'Show price history',
     'manager.actions.hideChart': 'Hide chart',
-    'manager.bulk.apply': 'Apply',
     'manager.bulk.public': 'Public',
     'manager.bulk.private': 'Private',
+    'manager.bulk.selectAll': 'Select all',
 
     // Price History Chart
     'chart.title': 'Price History',
@@ -613,6 +621,10 @@ export const translations = {
     'landing.footer.terms': 'Podmínky použití',
     'landing.footer.privacy': 'Ochrana soukromí',
     'landing.footer.rights': 'Všechna práva vyhrazena.',
+    'landing.globalValue.title': 'Globální hodnota sbírek',
+    'landing.globalValue.subtitle': 'Aktuální součet všech veřejných sbírek',
+    'landing.globalValue.label': 'Celková hodnota',
+    'landing.globalValue.items': 'položek',
 
     // Top Cards
     'topcards.title': 'Top 10 položek od našich sběratelů',
@@ -662,7 +674,7 @@ export const translations = {
     'manager.filter.all': 'vše',
     'manager.filter.collection': 'sbírka',
     'manager.filter.sold': 'prodaná',
-    'manager.filter.allPhotos': 'všechny fotky',
+    'manager.filter.allPhotos': 'vše',
     'manager.filter.withPhoto': 'jen s fotkou',
     'manager.sort.item': 'Položka',
     'manager.sort.buy': 'Nákupní',
@@ -683,7 +695,7 @@ export const translations = {
     'manager.table.buyPrice': 'Nákupní',
     'manager.table.currentPrice': 'Aktuální',
     'manager.table.quantity': 'Kusy',
-    'manager.table.soldPrice': 'Prodané',
+    'manager.table.soldPrice': 'Prodaná',
     'manager.table.status': 'Stav',
     'manager.table.actions': 'Akce',
     'manager.card.buy': 'Nákup:',
@@ -735,9 +747,9 @@ export const translations = {
     'manager.actions.delete': 'Smazat',
     'manager.actions.showChart': 'Zobrazit vývoj ceny',
     'manager.actions.hideChart': 'Skrýt graf',
-    'manager.bulk.apply': 'Použít',
     'manager.bulk.public': 'Veřejné',
     'manager.bulk.private': 'Soukromé',
+    'manager.bulk.selectAll': 'Vybrat vše',
 
     // Price History Chart
     'chart.title': 'Vývoj ceny',

@@ -80,7 +80,7 @@ function CardManager({ user }) {
       id: 'mock-notif-1',
       type: 'system',
       title: 'Mock notifikácia',
-      message: 'Testovací záznam pre E2E.',
+      message: 'Testovací záznam.',
       createdAt: { toDate: () => new Date(Date.now() - 1000 * 60 * 60) }
     }
   ];
@@ -95,11 +95,10 @@ function CardManager({ user }) {
   const [editingCard, setEditingCard] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('zbierka');
-  const [photoFilter, setPhotoFilter] = useState(false);
+  const [photoFilter, setPhotoFilter] = useState('all');
   const [sortKey, setSortKey] = useState('item');
   const [sortDir, setSortDir] = useState('asc');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [bulkQuantity, setBulkQuantity] = useState('');
   const [viewMode, setViewMode] = useState(() => {
     // Default: table for desktop, list for mobile
     return window.innerWidth >= 768 ? 'table' : 'list';
@@ -239,7 +238,12 @@ function CardManager({ user }) {
       filtered = filtered.filter(c => (c.item || '').toLowerCase().includes(q) || (c.note || '').toLowerCase().includes(q) || (c.status || '').toLowerCase().includes(q));
     }
     if (statusFilter !== 'all') filtered = filtered.filter(c => c.status === statusFilter);
-    if (photoFilter) filtered = filtered.filter(c => c.imageUrl);
+    if (photoFilter === 'photo') {
+      filtered = filtered.filter(c => {
+        const url = c.imageUrl;
+        return typeof url === 'string' ? url.trim().length > 0 : !!url;
+      });
+    }
     const sorted = [...filtered].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
       if (sortKey === 'item') {
@@ -268,6 +272,7 @@ function CardManager({ user }) {
   const totalCollectionPieces = collectionCards.reduce((sum, c) => sum + getQty(c), 0);
   const totalSoldPieces = soldCards.reduce((sum, c) => sum + getQty(c), 0);
   const formatMoney = (value, options = {}) => formatCurrency(value, language, options);
+  const equalColWidth = isDesktop ? '130px' : '120px';
 
   const handleLogout = async () => { try { await signOut(auth); } catch (err) { toast.error('Chyba pri odhlásení: ' + err.message); } };
   const toInputValue = (valueEur) => {
@@ -530,11 +535,9 @@ function CardManager({ user }) {
 
   const clearSelection = () => setSelectedIds(new Set());
 
-  const applyBulkUpdate = async ({ quantity, isPublic }) => {
+  const applyBulkUpdate = async ({ isPublic }) => {
     if (selectedIds.size === 0) return;
-    const qtyValue = quantity != null && String(quantity).trim() !== '' ? Math.max(1, parseInt(quantity, 10) || 1) : null;
     const updates = {};
-    if (qtyValue != null) updates.quantity = qtyValue;
     if (typeof isPublic === 'boolean') updates.isPublic = isPublic;
     if (!Object.keys(updates).length) return;
 
@@ -545,7 +548,6 @@ function CardManager({ user }) {
         )));
         toast.success(`Upravené položky: ${selectedIds.size}`);
         clearSelection();
-        setBulkQuantity('');
         return;
       }
 
@@ -559,7 +561,6 @@ function CardManager({ user }) {
       await batch.commit();
       toast.success(`Upravené položky: ${selectedIds.size}`);
       clearSelection();
-      setBulkQuantity('');
     } catch (err) {
       toast.error('Chyba pri hromadnej úprave: ' + err.message);
     }
@@ -614,12 +615,6 @@ function CardManager({ user }) {
             </button>
           )}
           <button
-            onClick={handleLogout}
-            style={{ ...styles.button, border: '1px solid #fecaca', background: '#fee2e2', color: '#991b1b' }}
-          >
-            {isDesktop ? 'Odhlásiť' : '🚪'}
-          </button>
-          <button
             onClick={() => setShowNotifications(true)}
             style={{
               ...styles.button,
@@ -654,7 +649,7 @@ function CardManager({ user }) {
             )}
           </button>
           <LanguageSwitcher darkMode={darkMode} />
-          <CurrencySwitcher darkMode={darkMode} />
+          <CurrencySwitcher darkMode={darkMode} isDesktop={isDesktop} />
           {(userRole === 'admin' || isAllowlistedAdmin) && (
             <button
               onClick={() => window.open('/admin_panel.html', '_blank')}
@@ -672,6 +667,12 @@ function CardManager({ user }) {
             </button>
           )}
           <button onClick={() => setDarkMode(!darkMode)} style={{ ...styles.button, width: '44px', height: '44px', padding: '0', background: '#eef2ff' }} title="Prepnúť tmavý režim">{darkMode ? '☀️' : '🌙'}</button>
+          <button
+            onClick={handleLogout}
+            style={{ ...styles.button, border: '1px solid #fecaca', background: '#fee2e2', color: '#991b1b' }}
+          >
+            {isDesktop ? 'Odhlásiť' : '🚪'}
+          </button>
         </div>
       </div>
 
@@ -783,8 +784,8 @@ function CardManager({ user }) {
                 <option value="predaná">{t('manager.filter.sold')}</option>
               </select>
               <select
-                value={photoFilter ? 'photo' : 'all'}
-                onChange={(e) => setPhotoFilter(e.target.value === 'photo')}
+                value={photoFilter}
+                onChange={(e) => setPhotoFilter(e.target.value)}
                 style={{ ...styles.button, width: '100%', background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', padding: '8px 12px', minHeight: '0', height: 'auto' }}
               >
                 <option value="all">{t('manager.filter.allPhotos')}</option>
@@ -902,8 +903,8 @@ function CardManager({ user }) {
                     <option value="predaná">{t('manager.filter.sold')}</option>
                   </select>
                   <select
-                    value={photoFilter ? 'photo' : 'all'}
-                    onChange={(e) => setPhotoFilter(e.target.value === 'photo')}
+                    value={photoFilter}
+                    onChange={(e) => setPhotoFilter(e.target.value)}
                     style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
                   >
                     <option value="all">{t('manager.filter.allPhotos')}</option>
@@ -994,20 +995,11 @@ function CardManager({ user }) {
           <div style={{ fontWeight: '600' }}>
             {selectedIds.size}× vybrané
           </div>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            placeholder={t('manager.modal.quantity')}
-            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px', width: '140px' }}
-            value={bulkQuantity}
-            onChange={(e) => setBulkQuantity(e.target.value)}
-          />
           <button
-            onClick={() => applyBulkUpdate({ quantity: bulkQuantity })}
-            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px', background: '#eef2ff', border: '1px solid #c7d2fe', color: '#1e3a8a' }}
+            onClick={toggleSelectAll}
+            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px', background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#334155' }}
           >
-            {t('manager.bulk.apply')}
+            {t('manager.bulk.selectAll')}
           </button>
           <button
             onClick={() => applyBulkUpdate({ isPublic: true })}
@@ -1020,12 +1012,6 @@ function CardManager({ user }) {
             style={{ ...styles.button, minHeight: '36px', padding: '8px 10px', background: '#e2e8f0', border: '1px solid #cbd5e1', color: '#334155' }}
           >
             {t('manager.bulk.private')}
-          </button>
-          <button
-            onClick={clearSelection}
-            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px' }}
-          >
-            {t('manager.modal.cancel')}
           </button>
         </div>
       )}
@@ -1263,36 +1249,36 @@ function CardManager({ user }) {
                   {sortKey === 'item' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </button>
               </th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
+              <th style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth, position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
                 <button
                   onClick={() => toggleSort('buy')}
-                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600 }}
+                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600, width: '100%' }}
                 >
                   {t('manager.table.buyPrice')} ({currency})
                   {sortKey === 'buy' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </button>
               </th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
+              <th style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth, position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
                 <button
                   onClick={() => toggleSort('current')}
-                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600 }}
+                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600, width: '100%' }}
                 >
                   {t('manager.table.currentPrice')} ({currency})
                   {sortKey === 'current' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </button>
               </th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
+              <th style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth, position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
                 <button
                   onClick={() => toggleSort('sold')}
-                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600 }}
+                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600, width: '100%' }}
                 >
                   {t('manager.table.soldPrice')} ({currency})
                   {sortKey === 'sold' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </button>
               </th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.quantity')}</th>
-              <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.status')}</th>
-              <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.actions')}</th>
+              <th style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth, position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.quantity')}</th>
+              <th style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth, position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.status')}</th>
+              <th style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth, position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.actions')}</th>
             </tr></thead>
             <tbody>
               {filteredCards.length === 0 ? (
@@ -1311,8 +1297,8 @@ function CardManager({ user }) {
                     </td>
                     <td style={{ padding: '10px 12px' }}>{card.imageUrl ? <img src={card.imageUrl} alt="foto" style={{ width: '56px', height: '56px', objectFit: 'contain', borderRadius: '10px', border: '1px solid #e5e7eb', background: darkMode ? '#0f172a' : '#f8fafc' }} onClick={(e) => { e.stopPropagation(); setImageModalUrl(card.imageUrl); }} /> : <span style={{ color: '#64748b' }}>—</span>}</td>
                     <td style={{ padding: '10px 12px' }}>{card.item}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.buy != null ? formatMoney(card.buy) : ''}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth }}>{card.buy != null ? formatMoney(card.buy) : ''}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth }}>
                       {card.current != null ? (
                         <span>
                           {formatMoney(card.current)}
@@ -1322,12 +1308,12 @@ function CardManager({ user }) {
                         </span>
                       ) : ''}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.status === 'predaná' && card.soldPrice != null ? formatMoney(card.soldPrice) : ''}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.quantity || 1}</td>
-                    <td style={{ padding: '10px 12px' }}>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth }}>{card.status === 'predaná' && card.soldPrice != null ? formatMoney(card.soldPrice) : ''}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', width: equalColWidth, minWidth: equalColWidth }}>{card.quantity || 1}</td>
+                    <td style={{ padding: '10px 12px', width: equalColWidth, minWidth: equalColWidth, textAlign: 'center' }}>
                       <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', background: card.status === 'zbierka' ? '#d1fae5' : '#fee2e2', color: card.status === 'zbierka' ? '#065f46' : '#991b1b' }}>{card.status === 'zbierka' ? t('manager.filter.collection') : t('manager.filter.sold')}</span>
                     </td>
-                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', width: equalColWidth, minWidth: equalColWidth, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                       {card.status === 'zbierka' && (
                         <button onClick={() => openSellModal(card)} style={{ ...styles.button, background: '#d1fae5', border: '1px solid #6ee7b7', color: '#065f46', marginRight: '5px', padding: '8px 12px', minHeight: '36px' }}>💰</button>
                       )}
@@ -1457,7 +1443,19 @@ function CardManager({ user }) {
 
               {/* Footer */}
               <div style={{ padding: isDesktop ? '14px 24px' : '12px 16px', borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, display: 'flex', gap: '12px', justifyContent: 'flex-end', background: darkMode ? '#0f172a' : '#f8fafc', borderRadius: '0 0 16px 16px' }}>
-                <button type="button" onClick={() => setShowModal(false)} style={{ ...styles.button, padding: '12px 24px' }}>{t('manager.modal.cancel')}</button>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  style={{
+                    ...styles.button,
+                    padding: '12px 24px',
+                    background: darkMode ? '#334155' : '#f1f5f9',
+                    color: darkMode ? '#f8fafc' : '#334155',
+                    border: `1px solid ${darkMode ? '#475569' : '#cbd5e1'}`
+                  }}
+                >
+                  {t('manager.modal.cancel')}
+                </button>
                 <button type="submit" style={{ ...styles.button, ...styles.primaryButton, padding: '12px 28px' }}>{t('manager.modal.save')}</button>
               </div>
             </form>

@@ -247,7 +247,8 @@
         <h1>👑 Admin Panel</h1>
         <div class="user-info">
           Prihlásený ako: <strong id="adminEmail"></strong>
-          <button onclick="window.location.href='/'" style="margin-left: 20px; background: #3b82f6;">← Späť na zbierku</button><button onclick="window.location.href='/admin_logs.html'" style="margin-left: 10px; background: #10b981;">📋 História aktualizácií</button>
+          <button onclick="refreshExchangeRatesNow()" style="margin-left: 20px; background: #0ea5e9;">🔄 Aktualizovať kurzový lístok</button>
+          <button onclick="window.location.href='/'" style="margin-left: 10px; background: #3b82f6;">← Späť na zbierku</button><button onclick="window.location.href='/admin_logs.html'" style="margin-left: 10px; background: #10b981;">📋 História aktualizácií</button>
           <button onclick="logout()" style="margin-left: 10px; background: #ef4444;">Odhlásiť sa</button>
         </div>
       </div>
@@ -266,13 +267,6 @@
           <div class="stat-value" id="totalCards">0</div>
           <div class="stat-label">Celkom položiek</div>
         </div>
-      </div>
-
-      <!-- ECB Refresh -->
-      <div class="card">
-        <h2 style="margin-bottom: 20px;">💱 ECB kurzy</h2>
-        <button onclick="refreshExchangeRatesNow()" style="margin-bottom: 10px; background: #0ea5e9;">🔄 Aktualizovať kurzový lístok</button>
-        <div style="font-size: 13px; color: #64748b;">Použi, ak pravidelná aktualizácia zlyhá.</div>
       </div>
 
       <!-- Users table -->

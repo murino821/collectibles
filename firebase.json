@@ -2,6 +2,9 @@
   "hosting": [
     {
       "target": "prod",
+      "predeploy": [
+        "npm run build"
+      ],
       "public": "dist",
       "ignore": [
         "firebase.json",
@@ -98,6 +101,9 @@
     },
     {
       "target": "test",
+      "predeploy": [
+        "npm run build:test"
+      ],
       "public": "dist",
       "ignore": [
         "firebase.json",

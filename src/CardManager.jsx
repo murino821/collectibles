@@ -220,8 +220,9 @@ function CardManager({ user }) {
     const unsubscribe = onSnapshot(userRef, (snapshot) => {
       if (snapshot.exists()) {
         const userData = snapshot.data();
+        setUserRole(userData.role || 'standard');
         setUserProfile({
-          displayName: userData.displayName || user.displayName || 'Anonym',
+          displayName: userData.displayName || user.displayName || user.email?.split('@')[0] || 'Profil',
           photoURL: userData.photoURL || user.photoURL || null
         });
       }
@@ -572,6 +573,14 @@ function CardManager({ user }) {
   const sellBuyValue = sellCard ? convertFromEur(sellCard.buy || 0) : 0;
   const sellProfitTotal = (sellPriceValue - sellBuyValue) * sellQtyValue;
   const sellProfitPercent = sellBuyValue > 0 ? ((sellPriceValue - sellBuyValue) / sellBuyValue * 100).toFixed(1) : '0.0';
+  const toggleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
 
   return (
     <div style={styles.container}>
@@ -581,7 +590,7 @@ function CardManager({ user }) {
           {isDesktop ? (
             <button
               onClick={() => setShowProfileEditor(true)}
-              style={{ ...styles.button, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              style={{ ...styles.button, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', color: '#0f172a' }}
               title="Upraviť profil"
             >
               {userProfile.photoURL ? (
@@ -589,7 +598,9 @@ function CardManager({ user }) {
               ) : (
                 <span>👤</span>
               )}
-              <span style={{ fontSize: '14px' }}>{userProfile.displayName}</span>
+              <span style={{ fontSize: '14px' }}>
+                {userProfile.displayName || user.email?.split('@')[0] || 'Profil'}
+              </span>
             </button>
           ) : (
             <button
@@ -778,24 +789,6 @@ function CardManager({ user }) {
                 <option value="photo">{t('manager.filter.withPhoto')}</option>
               </select>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value)}
-                style={{ ...styles.button, width: '100%', background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', padding: '8px 12px', minHeight: '0', height: 'auto' }}
-              >
-                <option value="item">{t('manager.sort.item')}</option>
-                <option value="buy">{t('manager.sort.buy')}</option>
-                <option value="current">{t('manager.sort.current')}</option>
-                <option value="sold">{t('manager.sort.sold')}</option>
-              </select>
-              <button
-                onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-                style={{ ...styles.button, width: '100%', background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', padding: '8px 12px', minHeight: '0', height: 'auto' }}
-              >
-                {sortDir === 'asc' ? t('manager.sort.asc') : t('manager.sort.desc')}
-              </button>
-            </div>
             <button
               onClick={openAddModal}
               style={{ ...styles.button, ...styles.primaryButton, flex: 1, minWidth: 0 }}
@@ -914,24 +907,6 @@ function CardManager({ user }) {
                     <option value="all">{t('manager.filter.allPhotos')}</option>
                     <option value="photo">{t('manager.filter.withPhoto')}</option>
                   </select>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 calc(50% - 4px)' }}>
-                  <select
-                    value={sortKey}
-                    onChange={(e) => setSortKey(e.target.value)}
-                    style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
-                  >
-                    <option value="item">{t('manager.sort.item')}</option>
-                    <option value="buy">{t('manager.sort.buy')}</option>
-                    <option value="current">{t('manager.sort.current')}</option>
-                    <option value="sold">{t('manager.sort.sold')}</option>
-                  </select>
-                  <button
-                    onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-                    style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
-                  >
-                    {sortDir === 'asc' ? t('manager.sort.asc') : t('manager.sort.desc')}
-                  </button>
                 </div>
                 <div style={{
                   display: 'flex',
@@ -1277,11 +1252,43 @@ function CardManager({ user }) {
                 />
               </th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.photo')}</th>
-              <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.item')}</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.buyPrice')} ({currency})</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.currentPrice')} ({currency})</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
+                <button
+                  onClick={() => toggleSort('item')}
+                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600 }}
+                >
+                  {t('manager.table.item')}
+                  {sortKey === 'item' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                </button>
+              </th>
+              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
+                <button
+                  onClick={() => toggleSort('buy')}
+                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600 }}
+                >
+                  {t('manager.table.buyPrice')} ({currency})
+                  {sortKey === 'buy' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                </button>
+              </th>
+              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
+                <button
+                  onClick={() => toggleSort('current')}
+                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600 }}
+                >
+                  {t('manager.table.currentPrice')} ({currency})
+                  {sortKey === 'current' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                </button>
+              </th>
               <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.quantity')}</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.soldPrice')} ({currency})</th>
+              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
+                <button
+                  onClick={() => toggleSort('sold')}
+                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600 }}
+                >
+                  {t('manager.table.soldPrice')} ({currency})
+                  {sortKey === 'sold' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                </button>
+              </th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.status')}</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.actions')}</th>
             </tr></thead>

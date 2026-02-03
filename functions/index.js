@@ -21,7 +21,7 @@ const ECB_BASE_URL =
 
 const ADMIN_ALLOWLIST = ["miroslav.svajda@gmail.com"];
 const isTestProject = () => {
-  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "";
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "";
   return projectId.endsWith("-test") || projectId.includes("your-card-collection-2026-test");
 };
 

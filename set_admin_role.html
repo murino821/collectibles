@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Set Admin Role</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f8fafc;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .loading {
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+    }
+    .success {
+      background: #d1fae5;
+      border-left: 4px solid #10b981;
+    }
+    .error {
+      background: #fee2e2;
+      border-left: 4px solid #ef4444;
+    }
+    pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>👑 Nastaviť Admin Rolu</h1>
+    <p>Tento nástroj ti nastaví admin rolu a všetky potrebné polia.</p>
+
+    <button id="loginBtn" onclick="loginAndSetAdmin()">Prihlásiť a nastaviť admin rolu</button>
+
+    <div id="status"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+    import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+    const isTest = window.location.hostname.includes('your-card-collection-2026-test');
+    const firebaseConfig = isTest
+      ? {
+          apiKey: "AIzaSyAKAr3NdF7VUtoajv9mtiitjXZPStuR0oY",
+          authDomain: "your-card-collection-2026-test.firebaseapp.com",
+          projectId: "your-card-collection-2026-test",
+          storageBucket: "your-card-collection-2026-test.firebasestorage.app",
+          messagingSenderId: "419835800440",
+          appId: "1:419835800440:web:0ef4cd6572ce21afca768d"
+        }
+      : {
+          apiKey: "AIzaSyBlAhlya-NNp8gCxGPBIPxxCgDa6l9AXo8",
+          authDomain: "your-card-collection-2026.firebaseapp.com",
+          projectId: "your-card-collection-2026",
+          storageBucket: "your-card-collection-2026.firebasestorage.app",
+          messagingSenderId: "620171462959",
+          appId: "1:620171462959:web:28ecb209a009d16db679da"
+        };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const googleProvider = new GoogleAuthProvider();
+
+    window.loginAndSetAdmin = async function() {
+      const status = document.getElementById('status');
+      const btn = document.getElementById('loginBtn');
+
+      btn.disabled = true;
+      status.className = 'status loading';
+      status.innerHTML = '<strong>⏳ Prihlasovanie...</strong>';
+
+      try {
+        // Login
+        const userCredential = await signInWithPopup(auth, googleProvider);
+        const user = userCredential.user;
+
+        status.innerHTML = '<strong>✅ Prihlásený:</strong> ' + user.email + '<br><strong>⏳ Nastavujem admin rolu...</strong>';
+
+        // Get current user data
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        const currentData = userDoc.exists() ? userDoc.data() : {};
+
+        // Set admin role and limits
+        await setDoc(userDocRef, {
+          ...currentData,
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || currentData.displayName || 'Admin',
+          photoURL: user.photoURL || currentData.photoURL || '',
+
+          // Admin role
+          role: 'admin',
+          subscriptionStatus: 'active',
+          subscriptionStartDate: currentData.subscriptionStartDate || new Date(),
+
+          // Admin limits
+          cardLimit: 999999,
+          currentCardCount: currentData.currentCardCount || 0,
+
+          // Admin update frequency
+          priceUpdatesEnabled: true,
+          updateIntervalDays: 15,
+          updatesPerMonth: 2,
+          updateDayOfMonth: currentData.updateDayOfMonth || Math.floor(Math.random() * 28) + 1,
+          updateHourOfDay: currentData.updateHourOfDay || 11,
+          nextUpdateDate: currentData.nextUpdateDate || new Date(),
+
+          // Notifications
+          emailNotifications: currentData.emailNotifications || false,
+          inAppNotifications: currentData.inAppNotifications !== false,
+
+          // Timestamps
+          createdAt: currentData.createdAt || new Date(),
+          updatedAt: new Date(),
+        }, { merge: true });
+
+        // Get updated data to display
+        const updatedDoc = await getDoc(userDocRef);
+        const updatedData = updatedDoc.data();
+
+        status.className = 'status success';
+        status.innerHTML = `
+          <strong>✅ Admin rola nastavená!</strong><br><br>
+          <strong>User ID:</strong> ${user.uid}<br>
+          <strong>Email:</strong> ${user.email}<br>
+          <strong>Rola:</strong> ${updatedData.role}<br>
+          <strong>Card Limit:</strong> ${updatedData.cardLimit === 999999 ? '∞' : updatedData.cardLimit}<br>
+          <strong>Update Interval:</strong> ${updatedData.updateIntervalDays} dní<br><br>
+          <strong>Kompletné dáta:</strong><br>
+          <pre>${JSON.stringify(updatedData, null, 2)}</pre>
+          <br>
+          <strong>🎉 Môžeš teraz otvoriť admin panel:</strong><br>
+          <a href="admin_panel.html" target="_blank" style="color: #3b82f6; text-decoration: underline;">admin_panel.html</a>
+        `;
+
+        btn.textContent = 'Hotovo! Obnoviť stránku';
+        btn.disabled = false;
+        btn.onclick = () => location.reload();
+
+      } catch (error) {
+        console.error('Error:', error);
+        status.className = 'status error';
+        status.innerHTML = `<strong>❌ Chyba:</strong><br><code>${error.message}</code>`;
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

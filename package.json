@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && (cp admin_panel.html update_schedule.html admin_logs.html dist/ 2>/dev/null || true)",
-    "build:test": "vite build --mode test && (cp admin_panel.html update_schedule.html admin_logs.html dist/ 2>/dev/null || true)",
+    "build": "vite build && (cp admin_panel.html update_schedule.html admin_logs.html set_admin_role.html dist/ 2>/dev/null || true)",
+    "build:test": "vite build --mode test && (cp admin_panel.html update_schedule.html admin_logs.html set_admin_role.html dist/ 2>/dev/null || true)",
     "lint": "eslint .",
     "preview": "vite preview"
   },

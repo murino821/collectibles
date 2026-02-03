@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "./Toast";
+import { useCurrency } from "../../CurrencyContext";
 
 export default function CardForm({ initial, onSubmit, onCancel }) {
   const toast = useToast();
+  const { currency } = useCurrency();
   const [form, setForm] = useState({
     item: "", status: "zbierka", buy: "", current: "", note: ""
   });
@@ -56,8 +58,8 @@ export default function CardForm({ initial, onSubmit, onCancel }) {
         <Input label="Položka"  name="item" value={form.item} onChange={handleChange}/>
         <Select label="Stav" name="status" value={form.status} onChange={handleChange}
           options={[["zbierka","zbierka"],["predaná","predaná"]]} />
-        <Input label="Nákupná cena (€)" name="buy" value={form.buy} onChange={handleChange} type="number" step="0.01"/>
-        <Input label="Aktuálna cena (€) - automaticky z eBay" name="current" value={form.current} disabled readOnly type="number" step="0.01" style={{backgroundColor: "#f1f5f9", color: "#64748b", cursor: "not-allowed", opacity: 0.7}}/>
+        <Input label={`Nákupná cena (${currency})`} name="buy" value={form.buy} onChange={handleChange} type="number" step="0.01"/>
+        <Input label={`Aktuálna cena (${currency}) - automaticky z eBay`} name="current" value={form.current} disabled readOnly type="number" step="0.01" style={{backgroundColor: "#f1f5f9", color: "#64748b", cursor: "not-allowed", opacity: 0.7}}/>
         <Input label="Poznámka" name="note" value={form.note} onChange={handleChange}/>
       </div>
 

@@ -36,6 +36,9 @@ service cloud.firestore {
              && data.item.size() <= 500
              && data.userId is string
              && data.status in ['zbierka', 'predaná', 'predane', 'wishlist']
+             // Quantity (default 1) and optional public flag
+             && (!('quantity' in data) || data.quantity == null || (data.quantity is int && data.quantity >= 1 && data.quantity <= 100000))
+             && (!('isPublic' in data) || data.isPublic is bool)
              // Prevent massive note fields (max 2000 chars)
              && (!('note' in data) || data.note.size() <= 2000)
              // Prevent massive imageUrl (max 1000 chars)
@@ -106,6 +109,28 @@ service cloud.firestore {
 
       // No delete allowed - users remain for data integrity
       allow delete: if false;
+    }
+
+    // =============================================
+    // EXCHANGE RATES COLLECTION
+    // =============================================
+    match /exchangeRates/{docId} {
+      // Public read - used for currency conversion in UI
+      allow read: if true;
+
+      // Write: Only Cloud Functions (via Admin SDK)
+      allow write: if false;
+    }
+
+    // =============================================
+    // STATS COLLECTION
+    // =============================================
+    match /stats/{docId} {
+      // Public read - used on landing page
+      allow read: if true;
+
+      // Write: Only Cloud Functions (via Admin SDK)
+      allow write: if false;
     }
 
     // =============================================

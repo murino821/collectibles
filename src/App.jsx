@@ -3,6 +3,7 @@ import { onAuthStateChanged, getRedirectResult, signInWithCustomToken } from 'fi
 import { auth, ensureAuthPersistence } from './firebase';
 import LandingPage from './LandingPage';
 import Login from './Login';
+import { CurrencyProvider } from './CurrencyContext';
 
 // Lazy load heavy components for better initial load performance
 const CardManager = lazy(() => import('./CardManager'));
@@ -119,55 +120,65 @@ function App() {
   // Show subpages if requested
   if (currentPage === 'collectors') {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <CollectorsPage onBackToHome={() => setCurrentPage('home')} />
-      </Suspense>
+      <CurrencyProvider user={user}>
+        <Suspense fallback={<LoadingFallback />}>
+          <CollectorsPage onBackToHome={() => setCurrentPage('home')} />
+        </Suspense>
+      </CurrencyProvider>
     );
   }
 
   if (currentPage === 'howto') {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <HowItWorksPage onBack={() => setCurrentPage('home')} />
-      </Suspense>
+      <CurrencyProvider user={user}>
+        <Suspense fallback={<LoadingFallback />}>
+          <HowItWorksPage onBack={() => setCurrentPage('home')} />
+        </Suspense>
+      </CurrencyProvider>
     );
   }
 
   if (currentPage === 'terms') {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <TermsPage onBack={() => setCurrentPage('home')} />
-      </Suspense>
+      <CurrencyProvider user={user}>
+        <Suspense fallback={<LoadingFallback />}>
+          <TermsPage onBack={() => setCurrentPage('home')} />
+        </Suspense>
+      </CurrencyProvider>
     );
   }
 
   if (currentPage === 'privacy') {
     return (
-      <Suspense fallback={<LoadingFallback />}>
-        <PrivacyPage onBack={() => setCurrentPage('home')} />
-      </Suspense>
+      <CurrencyProvider user={user}>
+        <Suspense fallback={<LoadingFallback />}>
+          <PrivacyPage onBack={() => setCurrentPage('home')} />
+        </Suspense>
+      </CurrencyProvider>
     );
   }
 
   return (
-    <div>
-      {!user ? (
-        <>
-          <LandingPage
-            onLoginClick={() => setShowLoginModal(true)}
-            onCollectorsClick={() => setCurrentPage('collectors')}
-            onHowtoClick={() => setCurrentPage('howto')}
-            onTermsClick={() => setCurrentPage('terms')}
-            onPrivacyClick={() => setCurrentPage('privacy')}
-          />
-          <Login isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
-        </>
-      ) : (
-        <Suspense fallback={<LoadingFallback />}>
-          <CardManager user={user} />
-        </Suspense>
-      )}
-    </div>
+    <CurrencyProvider user={user}>
+      <div>
+        {!user ? (
+          <>
+            <LandingPage
+              onLoginClick={() => setShowLoginModal(true)}
+              onCollectorsClick={() => setCurrentPage('collectors')}
+              onHowtoClick={() => setCurrentPage('howto')}
+              onTermsClick={() => setCurrentPage('terms')}
+              onPrivacyClick={() => setCurrentPage('privacy')}
+            />
+            <Login isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
+          </>
+        ) : (
+          <Suspense fallback={<LoadingFallback />}>
+            <CardManager user={user} />
+          </Suspense>
+        )}
+      </div>
+    </CurrencyProvider>
   );
 }
 

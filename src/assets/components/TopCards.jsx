@@ -25,8 +25,9 @@ function TopCards() {
         const q = query(
           cardsRef,
           where('status', '==', 'zbierka'),
+          where('isPublic', '==', true),
           orderBy('current', 'desc'),
-          limit(50) // Get more to filter client-side
+          limit(100) // Get more to filter client-side
         );
 
         const snapshot = await getDocs(q);
@@ -43,8 +44,14 @@ function TopCards() {
             card.imageUrl.trim() !== ''
           );
 
+        const sorted = cards.sort((a, b) => {
+          const aValue = (a.current || 0) * (a.quantity || 1);
+          const bValue = (b.current || 0) * (b.quantity || 1);
+          return bValue - aValue;
+        });
+
         console.log('TopCards: Loaded', cards.length, 'cards with images');
-        setTopCards(cards.slice(0, 10)); // Ensure max 10 cards
+        setTopCards(sorted.slice(0, 10)); // Ensure max 10 cards
       } catch (err) {
         console.error('TopCards error:', err);
         console.error('Error code:', err.code);
@@ -68,7 +75,8 @@ function TopCards() {
 
   const formatPrice = (price) => {
     if (price == null) return '—';
-    return new Intl.NumberFormat('sk-SK', {
+    const locale = lang === 'en' ? 'en-GB' : lang === 'cz' ? 'cs-CZ' : 'sk-SK';
+    return new Intl.NumberFormat(locale, {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(price);
@@ -163,8 +171,11 @@ function TopCards() {
               <div style={styles.priceContainer}>
                 <div style={styles.priceLabel}>{t('topcards.value', lang)}</div>
                 <div style={styles.priceValue}>
-                  €{formatPrice(card.current)}
+                  €{formatPrice((card.current || 0) * (card.quantity || 1))}
                 </div>
+                {card.quantity > 1 && (
+                  <div style={styles.quantityBadge}>x{card.quantity}</div>
+                )}
               </div>
 
               {/* Additional Stats */}
@@ -177,7 +188,7 @@ function TopCards() {
                         ...styles.statValue,
                         color: card.current >= card.buy ? '#10b981' : '#ef4444'
                       }}>
-                        {card.buy > 0 ? `${((card.current - card.buy) / card.buy * 100).toFixed(0)}%` : '—'}
+                        {card.buy > 0 ? `${(((card.current - card.buy) / card.buy) * 100).toFixed(0)}%` : '—'}
                       </span>
                     </div>
                   )}
@@ -323,6 +334,16 @@ const styles = {
     fontSize: '24px',
     fontWeight: 'bold',
     color: 'white'
+  },
+  quantityBadge: {
+    marginTop: '6px',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#0f172a',
+    background: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: '999px',
+    padding: '4px 8px',
+    display: 'inline-block'
   },
   statsRow: {
     display: 'flex',

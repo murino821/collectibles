@@ -2,9 +2,13 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, orderBy, limit, onSnapshot, updateDoc, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useToast } from './Toast';
+import { useCurrency } from '../../CurrencyContext';
+import { useLanguage } from '../../LanguageContext';
 
 function NotificationPanel({ user, darkMode, onClose, isMockAuth = false, mockNotifications = [] }) {
   const toast = useToast();
+  const { formatCurrency } = useCurrency();
+  const { language } = useLanguage();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -83,7 +87,7 @@ function NotificationPanel({ user, darkMode, onClose, isMockAuth = false, mockNo
     if (notif.actionType === 'view_log') {
       // Mohli by sme otvoriť detail modal s logom
       console.log('View log:', notif.actionData);
-      toast.info(`Update detail:\n✅ Úspešne: ${notif.actionData.successCount}\n❌ Neúspešne: ${notif.actionData.failCount}\n💰 Celková hodnota: €${notif.actionData.totalValue.toFixed(2)}`, 8000);
+      toast.info(`Update detail:\n✅ Úspešne: ${notif.actionData.successCount}\n❌ Neúspešne: ${notif.actionData.failCount}\n💰 Celková hodnota: ${formatCurrency(notif.actionData.totalValue, language)}`, 8000);
     }
   };
 

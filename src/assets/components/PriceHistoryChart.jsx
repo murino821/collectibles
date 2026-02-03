@@ -1,5 +1,6 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useLanguage } from '../../LanguageContext';
+import { useCurrency } from '../../CurrencyContext';
 
 /**
  * PriceHistoryChart - Displays price evolution for a single card
@@ -9,6 +10,7 @@ import { useLanguage } from '../../LanguageContext';
  */
 function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
   const { t, language } = useLanguage();
+  const { currency, formatCurrency, formatCurrencyCompact } = useCurrency();
 
   if (!priceHistory || priceHistory.length === 0) {
     return (
@@ -87,7 +89,7 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
             color: isPositive ? '#10b981' : '#ef4444',
             marginBottom: '4px'
           }}>
-            {isPositive ? '+' : ''}{priceChange.toFixed(2)} €
+            {isPositive ? '+' : ''}{formatCurrency(priceChange, language)}
           </div>
           <div style={{
             fontSize: '13px',
@@ -116,7 +118,7 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
             stroke={textColor}
             style={{ fontSize: '11px' }}
             tick={{ fill: textColor }}
-            tickFormatter={(value) => `€${value.toFixed(0)}`}
+            tickFormatter={(value) => formatCurrencyCompact(value, language)}
           />
           <Tooltip
             contentStyle={{
@@ -126,7 +128,7 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
               fontSize: '13px'
             }}
             labelStyle={{ color: textColor, fontWeight: '600' }}
-            formatter={(value) => [`€${value.toFixed(2)}`, t('chart.price')]}
+            formatter={(value) => [formatCurrency(value, language), t('chart.price')]}
           />
           <Legend
             wrapperStyle={{ fontSize: '12px' }}
@@ -139,7 +141,7 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
             strokeWidth={2}
             dot={{ fill: lineColor, r: 4 }}
             activeDot={{ r: 6 }}
-            name={t('chart.priceLabel')}
+            name={`${t('chart.priceLabel')} (${currency})`}
           />
         </LineChart>
       </ResponsiveContainer>
@@ -158,7 +160,7 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
             Minimum
           </div>
           <div style={{ fontSize: '16px', fontWeight: '600', color: '#ef4444' }}>
-            €{Math.min(...chartData.map(d => d.cena)).toFixed(2)}
+            {formatCurrency(Math.min(...chartData.map(d => d.cena)), language)}
           </div>
         </div>
         <div>
@@ -166,7 +168,7 @@ function PriceHistoryChart({ priceHistory = [], darkMode = false }) {
             Maximum
           </div>
           <div style={{ fontSize: '16px', fontWeight: '600', color: '#10b981' }}>
-            €{Math.max(...chartData.map(d => d.cena)).toFixed(2)}
+            {formatCurrency(Math.max(...chartData.map(d => d.cena)), language)}
           </div>
         </div>
       </div>

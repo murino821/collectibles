@@ -66,6 +66,8 @@ export default function ImportCSV({ onImportComplete }) {
           buy: null,
           current: null,
           status: 'zbierka',
+          quantity: 1,
+          isPublic: false,
           note: '',
           imageUrl: null,
           imageName: null,

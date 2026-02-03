@@ -9,11 +9,54 @@ const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
+const fetch = require("node-fetch");
 admin.initializeApp();
 
 const db = admin.firestore();
 const {searchEbayCard, calculateEstimatedPrice, enhanceQuery} = require("./ebayAPI");
 const {globalLimiter} = require("./rateLimiter");
+
+const ECB_BASE_URL =
+  "https://data-api.ecb.europa.eu/service/data/EXR/D.{CURRENCY}.EUR.SP00.A?format=jsondata";
+
+async function getLatestExchangeRates() {
+  try {
+    const snap = await db.collection("exchangeRates").doc("latest").get();
+    if (!snap.exists) return null;
+    return snap.data()?.rates || null;
+  } catch (error) {
+    console.error("Error loading exchange rates:", error);
+    return null;
+  }
+}
+
+function parseEcbSeries(json) {
+  const series = json?.dataSets?.[0]?.series;
+  if (!series) return null;
+  const seriesKey = Object.keys(series)[0];
+  if (!seriesKey) return null;
+  const observations = series[seriesKey]?.observations;
+  if (!observations) return null;
+  const keys = Object.keys(observations);
+  if (!keys.length) return null;
+  const lastKey = keys.sort((a, b) => Number(a) - Number(b)).pop();
+  const value = observations[lastKey]?.[0];
+  const dates = json?.structure?.dimensions?.observation?.[0]?.values || [];
+  const asOf = dates[Number(lastKey)]?.id || null;
+  if (typeof value !== "number") return null;
+  return {value, asOf};
+}
+
+async function fetchEcbRate(currency) {
+  const url = ECB_BASE_URL.replace("{CURRENCY}", currency);
+  const response = await fetch(url, {headers: {Accept: "application/json"}});
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`ECB fetch failed for ${currency}: ${response.status} ${text}`);
+  }
+  const json = await response.json();
+  return parseEcbSeries(json);
+}
 
 /**
  * Update all cards for a specific user
@@ -22,6 +65,8 @@ const {globalLimiter} = require("./rateLimiter");
  */
 async function updateUserCollection(userId) {
   console.log(`🔄 Starting collection update for user: ${userId}`);
+
+  const fxRates = await getLatestExchangeRates();
 
   // Get all user's cards
   const cardsSnapshot = await db.collection("cards")
@@ -92,7 +137,7 @@ async function updateUserCollection(userId) {
         console.log(`🔍 Searching: ${query}`);
 
         // Search eBay
-        const results = await searchEbayCard(query);
+        const results = await searchEbayCard(query, fxRates);
 
         if (results.length > 0) {
           const estimatedPrice = calculateEstimatedPrice(results);
@@ -208,7 +253,8 @@ async function createUserNotification(userId, logData) {
     let totalValue = 0;
     userCardsSnapshot.forEach((doc) => {
       const card = doc.data();
-      totalValue += card.current || 0;
+      const qty = card.quantity || 1;
+      totalValue += (card.current || 0) * qty;
     });
 
     // Calculate percentage of successful updates
@@ -363,6 +409,9 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
       emailNotifications: false,
       inAppNotifications: true,
 
+      // Currency preferences
+      currency: "EUR",
+
       // Timestamps
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -373,6 +422,68 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
     // Don't throw - user can still use the app
   }
 });
+
+exports.refreshExchangeRatesV2 = onSchedule(
+    {schedule: "10 6 * * *", timeZone: "Europe/Bratislava"},
+    async () => {
+      console.log("💱 Refreshing ECB exchange rates...");
+
+      try {
+        const [usd, czk] = await Promise.all([
+          fetchEcbRate("USD"),
+          fetchEcbRate("CZK"),
+        ]);
+
+        if (!usd?.value || !czk?.value) {
+          throw new Error("Missing ECB rate values");
+        }
+
+        const rates = {
+          EUR: 1,
+          USD: usd.value,
+          CZK: czk.value,
+        };
+
+        const asOf = usd.asOf || czk.asOf || null;
+
+        await db.collection("exchangeRates").doc("latest").set({
+          base: "EUR",
+          rates,
+          asOf,
+          source: "ECB",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, {merge: true});
+
+        // Update global stats (total value in EUR)
+        const cardsSnapshot = await db.collection("cards")
+            .where("status", "==", "zbierka")
+            .get();
+
+        let totalValueEur = 0;
+        let totalItems = 0;
+        cardsSnapshot.forEach((doc) => {
+          const card = doc.data();
+          const qty = card.quantity || 1;
+          totalItems += qty;
+          totalValueEur += (card.current || 0) * qty;
+        });
+
+        await db.collection("stats").doc("global").set({
+          totalCollectionValueEur: parseFloat(totalValueEur.toFixed(2)),
+          totalItems,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          source: "cards",
+          asOf,
+        }, {merge: true});
+
+        console.log("✅ ECB rates updated");
+        return null;
+      } catch (error) {
+        console.error("💥 ECB refresh failed:", error);
+        throw error;
+      }
+    },
+);
 
 // =========================================================
 // V2 FUNCTIONS (parallel to v1, for Node 22 migration)
@@ -832,6 +943,8 @@ exports.seedE2EDataV2 = onCall(async (request) => {
         buy: 10,
         current: 25,
         status: "zbierka",
+        quantity: 2,
+        isPublic: true,
         note: "E2E note",
         imageUrl: "https://example.com/e2e-crosby.jpg",
         createdAt: now,
@@ -846,6 +959,8 @@ exports.seedE2EDataV2 = onCall(async (request) => {
         buy: 15,
         current: 30,
         status: "zbierka",
+        quantity: 1,
+        isPublic: false,
         note: "",
         createdAt: now,
         updatedAt: now,
@@ -860,6 +975,8 @@ exports.seedE2EDataV2 = onCall(async (request) => {
         current: 40,
         soldPrice: 50,
         status: "predaná",
+        quantity: 1,
+        isPublic: false,
         note: "Sold card",
         createdAt: now,
         updatedAt: now,

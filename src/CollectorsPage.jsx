@@ -3,6 +3,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import './CollectorsPage.css';
 import { t, getCurrentLanguage } from './translations';
+import { useCurrency } from './CurrencyContext';
 
 /**
  * CollectorsPage - Public page showing list of all collectors
@@ -13,6 +14,7 @@ function CollectorsPage({ onBackToHome }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const lang = getCurrentLanguage();
+  const { formatCurrencyCompact } = useCurrency();
 
   useEffect(() => {
     const fetchCollectors = async () => {
@@ -40,9 +42,10 @@ function CollectorsPage({ onBackToHome }) {
                 withImages: 0
               };
             }
-            userCards[card.userId].count++;
-            userCards[card.userId].totalValue += card.current || 0;
-            if (card.imageUrl) userCards[card.userId].withImages++;
+            const qty = card.quantity || 1;
+            userCards[card.userId].count += qty;
+            userCards[card.userId].totalValue += (card.current || 0) * qty;
+            if (card.imageUrl) userCards[card.userId].withImages += qty;
           }
         });
 
@@ -80,13 +83,8 @@ function CollectorsPage({ onBackToHome }) {
   }, []);
 
   const formatPrice = (price) => {
-    if (price == null) return '€0';
-    return new Intl.NumberFormat('sk-SK', {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(price);
+    if (price == null) return formatCurrencyCompact(0, lang);
+    return formatCurrencyCompact(price, lang);
   };
 
   if (loading) {

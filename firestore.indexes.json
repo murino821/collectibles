@@ -9,6 +9,10 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "isPublic",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "current",
           "order": "DESCENDING"
         }

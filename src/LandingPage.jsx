@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './LandingPage.css';
 import TopCards from './assets/components/TopCards';
+import GlobalCollectionStats from './assets/components/GlobalCollectionStats';
 import LanguageSwitcher from './assets/components/LanguageSwitcher';
 import { t, getCurrentLanguage } from './translations';
 
@@ -178,6 +179,7 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
       </section>
 
       {/* Top Cards Section */}
+      <GlobalCollectionStats />
       <TopCards />
 
       {/* How it Works Section */}
@@ -257,6 +259,9 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
           </div>
           <div className="footer-bottom">
             <p>&copy; 2025 {t('landing.footer.brand', lang)}. {t('landing.footer.rights', lang)}</p>
+            <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
+              {t('landing.footer.exchangeSource', lang)}
+            </p>
             <div style={{ marginTop: '16px' }}>
               <LanguageSwitcher darkMode={false} />
             </div>

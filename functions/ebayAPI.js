@@ -84,7 +84,7 @@ async function getEbayToken() {
  * @param {string} query - Search term
  * @return {Promise<Array>} Array of active listing results
  */
-async function searchEbayCard(query) {
+async function searchEbayCard(query, fxRates = null) {
   const token = await getEbayToken();
 
   // Calculate date 90 days ago (only recent sold items)
@@ -145,7 +145,8 @@ async function searchEbayCard(query) {
     }
 
     // Parse ACTIVE listings results - only store essential data
-    const USD_TO_EUR = 0.92; // Approximate conversion rate
+    const usdRate = fxRates && typeof fxRates.USD === "number" ? fxRates.USD : null;
+    const USD_TO_EUR = usdRate ? 1 / usdRate : 0.92; // Fallback approximate conversion rate
     return data.itemSummaries
         .filter((item) => item.price && item.price.value > 0) // Only valid prices
         .map((item) => {

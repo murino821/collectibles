@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot } from 'recharts';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useCurrency } from '../../CurrencyContext';
+import { useLanguage } from '../../LanguageContext';
 
 const TIME_FILTERS = [
   { key: '1Y', label: '1 rok', months: 12 },
@@ -23,6 +25,8 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
   const [loading, setLoading] = useState(true);
   const [timeFilter, setTimeFilter] = useState('ALL');
   const [cards, setCards] = useState([]);
+  const { formatCurrency, formatCurrencyCompact } = useCurrency();
+  const { language } = useLanguage();
 
   useEffect(() => {
     if (isMockAuth) {
@@ -35,10 +39,10 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
       ];
       setAllData(mockData);
       setCards([
-        { id: 'mock-1', status: 'zbierka', buy: 180, current: 320 },
-        { id: 'mock-2', status: 'zbierka', buy: 25, current: 40 },
-        { id: 'mock-3', status: 'predaná', buy: 210, soldPrice: 295 },
-        { id: 'mock-4', status: 'zbierka', buy: 8, current: 12 }
+        { id: 'mock-1', status: 'zbierka', buy: 180, current: 320, quantity: 2 },
+        { id: 'mock-2', status: 'zbierka', buy: 25, current: 40, quantity: 1 },
+        { id: 'mock-3', status: 'predaná', buy: 210, soldPrice: 295, quantity: 1 },
+        { id: 'mock-4', status: 'zbierka', buy: 8, current: 12, quantity: 3 }
       ]);
       setLoading(false);
       return;
@@ -63,6 +67,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
         const events = [];
 
         cardsData.forEach(card => {
+          const qty = card.quantity || 1;
           // 1. Purchase event (createdAt + buy price)
           if (card.createdAt) {
             const purchaseDate = card.createdAt.toDate ? card.createdAt.toDate() : new Date(card.createdAt);
@@ -70,7 +75,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
               date: purchaseDate,
               cardId: card.id,
               type: 'purchase',
-              price: card.buy || 0,
+              price: (card.buy || 0) * qty,
               cardName: card.item
             });
           }
@@ -83,7 +88,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
                 date: priceDate,
                 cardId: card.id,
                 type: 'priceUpdate',
-                price: entry.price,
+                price: entry.price * qty,
                 cardName: card.item
               });
             });
@@ -96,7 +101,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
               date: saleDate,
               cardId: card.id,
               type: 'sale',
-              price: card.soldPrice || card.current || 0,
+              price: (card.soldPrice || card.current || 0) * qty,
               cardName: card.item
             });
           }
@@ -231,9 +236,9 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
     const collectionCards = cards.filter(c => c.status === 'zbierka');
     const soldCards = cards.filter(c => c.status === 'predaná');
 
-    const totalInvested = cards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0), 0);
-    const totalSold = soldCards.reduce((sum, c) => sum + (parseFloat(c.soldPrice) || 0), 0);
-    const soldCost = soldCards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0), 0);
+    const totalInvested = cards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0) * (c.quantity || 1), 0);
+    const totalSold = soldCards.reduce((sum, c) => sum + (parseFloat(c.soldPrice) || 0) * (c.quantity || 1), 0);
+    const soldCost = soldCards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0) * (c.quantity || 1), 0);
     const realizedProfit = totalSold - soldCost;
 
     return {
@@ -241,11 +246,11 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
       initialValue: first.hodnota,
       change,
       changePercent,
-      cardCount: collectionCards.length,
+      cardCount: collectionCards.reduce((sum, c) => sum + (c.quantity || 1), 0),
       totalInvested,
       totalSold,
       realizedProfit,
-      soldCount: soldCards.length
+      soldCount: soldCards.reduce((sum, c) => sum + (c.quantity || 1), 0)
     };
   }, [chartData, cards]);
 
@@ -311,7 +316,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
           {data.dateFormatted}
         </div>
         <div style={{ color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: '600', fontSize: '16px' }}>
-          €{data.hodnota.toFixed(2)}
+          {formatCurrency(data.hodnota, language)}
         </div>
         <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
           {data.pocetPoloziek} položiek v zbierke
@@ -402,7 +407,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
               Hodnota zbierky
             </div>
             <div style={{ fontSize: '22px', fontWeight: 'bold', color: darkMode ? '#f8fafc' : '#0f172a' }}>
-              €{stats.currentValue.toFixed(2)}
+              {formatCurrency(stats.currentValue, language)}
             </div>
           </div>
 
@@ -415,7 +420,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
               fontWeight: 'bold',
               color: isPositive ? '#10b981' : '#ef4444'
             }}>
-              {isPositive ? '+' : ''}{stats.change.toFixed(2)} €
+              {isPositive ? '+' : ''}{formatCurrency(stats.change, language)}
               <span style={{ fontSize: '12px', marginLeft: '4px' }}>
                 ({isPositive ? '+' : ''}{stats.changePercent.toFixed(1)}%)
               </span>
@@ -441,7 +446,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
                 fontWeight: '600',
                 color: stats.realizedProfit >= 0 ? '#10b981' : '#ef4444'
               }}>
-                {stats.realizedProfit >= 0 ? '+' : ''}{stats.realizedProfit.toFixed(2)} €
+                {stats.realizedProfit >= 0 ? '+' : ''}{formatCurrency(stats.realizedProfit, language)}
               </div>
             </div>
           )}
@@ -472,7 +477,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
             stroke={textColor}
             style={{ fontSize: '11px' }}
             tick={{ fill: textColor }}
-            tickFormatter={(value) => `€${value.toFixed(0)}`}
+            tickFormatter={(value) => formatCurrencyCompact(value, language)}
           />
           <Tooltip content={<CustomTooltip />} />
           <Area
@@ -543,7 +548,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
             Celkom investované
           </div>
           <div style={{ fontSize: '14px', fontWeight: '600' }}>
-            €{stats.totalInvested.toFixed(2)}
+            {formatCurrency(stats.totalInvested, language)}
           </div>
         </div>
         {stats.soldCount > 0 && (
@@ -552,7 +557,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
               Predané ({stats.soldCount} ks)
             </div>
             <div style={{ fontSize: '14px', fontWeight: '600' }}>
-              €{stats.totalSold.toFixed(2)}
+              {formatCurrency(stats.totalSold, language)}
             </div>
           </div>
         )}
@@ -561,7 +566,7 @@ function PortfolioChart({ user, darkMode = false, isMockAuth = false }) {
             Priem. cena karty
           </div>
           <div style={{ fontSize: '14px', fontWeight: '600' }}>
-            €{stats.cardCount > 0 ? (stats.currentValue / stats.cardCount).toFixed(2) : '0.00'}
+            {formatCurrency(stats.cardCount > 0 ? (stats.currentValue / stats.cardCount) : 0, language)}
           </div>
         </div>
         <div>

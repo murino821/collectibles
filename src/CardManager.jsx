@@ -9,13 +9,16 @@ import PortfolioChart from './assets/components/PortfolioChart';
 import PriceHistoryChart from './assets/components/PriceHistoryChart';
 import ProfileEditor from './assets/components/ProfileEditor';
 import LanguageSwitcher from './assets/components/LanguageSwitcher';
+import CurrencySwitcher from './assets/components/CurrencySwitcher';
 import { useToast } from './assets/components/Toast';
 import { useLanguage } from './LanguageContext';
+import { useCurrency } from './CurrencyContext';
 
 function CardManager({ user }) {
   const isMockAuth = import.meta.env.DEV && import.meta.env.VITE_MOCK_AUTH === '1';
   const toast = useToast();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { currency, formatCurrency, formatCurrencyCompact, convertFromEur, convertToEur } = useCurrency();
   const mockCards = [
     {
       id: 'mock-1',
@@ -24,6 +27,8 @@ function CardManager({ user }) {
       buy: 180.0,
       current: 320.0,
       status: 'zbierka',
+      quantity: 2,
+      isPublic: true,
       note: 'Top rookie card',
       imageUrl: '/sports.jpg',
       priceHistory: [
@@ -39,6 +44,8 @@ function CardManager({ user }) {
       buy: 25.0,
       current: 40.0,
       status: 'zbierka',
+      quantity: 1,
+      isPublic: false,
       note: '',
       imageUrl: null
     },
@@ -49,6 +56,8 @@ function CardManager({ user }) {
       buy: 210.0,
       current: 280.0,
       status: 'predaná',
+      quantity: 1,
+      isPublic: false,
       soldPrice: 295.0,
       note: 'Sold at expo',
       imageUrl: '/sports-collection.jpg'
@@ -60,6 +69,8 @@ function CardManager({ user }) {
       buy: 8.0,
       current: 12.0,
       status: 'zbierka',
+      quantity: 3,
+      isPublic: false,
       note: 'No photo',
       imageUrl: null
     }
@@ -90,7 +101,7 @@ function CardManager({ user }) {
     return window.innerWidth >= 768 ? 'table' : 'list';
   });
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
-  const [formData, setFormData] = useState({ item: '', buy: '', current: '', status: 'zbierka', note: '', imageFile: null, imageUrl: '', soldPrice: '' });
+  const [formData, setFormData] = useState({ item: '', buy: '', current: '', status: 'zbierka', note: '', imageFile: null, imageUrl: '', soldPrice: '', quantity: '1', isPublic: false });
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showPortfolioChart, setShowPortfolioChart] = useState(false);
@@ -99,6 +110,7 @@ function CardManager({ user }) {
   const [showSellModal, setShowSellModal] = useState(false);
   const [sellCard, setSellCard] = useState(null);
   const [sellPrice, setSellPrice] = useState('');
+  const [sellQuantity, setSellQuantity] = useState('1');
   const [imageModalUrl, setImageModalUrl] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteCard, setDeleteCard] = useState(null);
@@ -226,39 +238,73 @@ function CardManager({ user }) {
 
   const collectionCards = cards.filter(c => c.status === 'zbierka');
   const soldCards = cards.filter(c => c.status === 'predaná');
-  const totalBuy = collectionCards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0), 0);
-  const totalCurrent = collectionCards.reduce((sum, c) => sum + (parseFloat(c.current) || 0), 0);
+  const getQty = (card) => card.quantity || 1;
+  const totalBuy = collectionCards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0) * getQty(c), 0);
+  const totalCurrent = collectionCards.reduce((sum, c) => sum + (parseFloat(c.current) || 0) * getQty(c), 0);
   const profit = totalCurrent - totalBuy;
-    const totalSoldValue = soldCards.reduce((sum, c) => sum + (parseFloat(c.soldPrice) || 0), 0);
-  const soldProfit = totalSoldValue - soldCards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0), 0);
-  const fmt = (n) => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('sk-SK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const totalSoldValue = soldCards.reduce((sum, c) => sum + (parseFloat(c.soldPrice) || 0) * getQty(c), 0);
+  const soldProfit = totalSoldValue - soldCards.reduce((sum, c) => sum + (parseFloat(c.buy) || 0) * getQty(c), 0);
+  const totalCollectionPieces = collectionCards.reduce((sum, c) => sum + getQty(c), 0);
+  const totalSoldPieces = soldCards.reduce((sum, c) => sum + getQty(c), 0);
+  const formatMoney = (value, options = {}) => formatCurrency(value, language, options);
 
   const handleLogout = async () => { try { await signOut(auth); } catch (err) { toast.error('Chyba pri odhlásení: ' + err.message); } };
-  const openAddModal = () => { setEditingCard(null); setFormData({ item: '', buy: '', current: '', status: 'zbierka', note: '', imageFile: null, imageUrl: '', soldPrice: '' }); setShowModal(true); };
-  const openEditModal = (card) => { setEditingCard(card); setFormData({ item: card.item || '', buy: card.buy || '', current: card.current || '', status: card.status || 'zbierka', note: card.note || '', imageFile: null, imageUrl: card.imageUrl || '', soldPrice: card.soldPrice || '' }); setShowModal(true); };
+  const toInputValue = (valueEur) => {
+    if (valueEur === null || valueEur === undefined || valueEur === '') return '';
+    const converted = convertFromEur(parseFloat(valueEur));
+    return Number.isFinite(converted) ? String(Math.round(converted * 100) / 100) : '';
+  };
+  const openAddModal = () => {
+    setEditingCard(null);
+    setFormData({ item: '', buy: '', current: '', status: 'zbierka', note: '', imageFile: null, imageUrl: '', soldPrice: '', quantity: '1', isPublic: false });
+    setShowModal(true);
+  };
+  const openEditModal = (card) => {
+    setEditingCard(card);
+    setFormData({
+      item: card.item || '',
+      buy: toInputValue(card.buy),
+      current: toInputValue(card.current),
+      status: card.status || 'zbierka',
+      note: card.note || '',
+      imageFile: null,
+      imageUrl: card.imageUrl || '',
+      soldPrice: toInputValue(card.soldPrice),
+      quantity: String(card.quantity || 1),
+      isPublic: !!card.isPublic
+    });
+    setShowModal(true);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.item.trim()) { toast.warning('Vyplň aspoň pole "Položka"'); return; }
     try {
+      const quantityValue = Math.max(1, parseInt(formData.quantity, 10) || 1);
+      const parseMoney = (value) => {
+        const num = parseFloat(value);
+        return Number.isFinite(num) ? convertToEur(num) : null;
+      };
       if (isMockAuth) {
         const mockImageUrl = formData.imageFile ? URL.createObjectURL(formData.imageFile) : formData.imageUrl;
         const cardData = {
           id: editingCard?.id || createMockId(),
           item: formData.item.trim(),
-          buy: formData.buy ? parseFloat(formData.buy) : null,
-          current: formData.current ? parseFloat(formData.current) : null,
+          buy: parseMoney(formData.buy),
+          current: parseMoney(formData.current),
           status: formData.status,
           note: formData.note.trim(),
           imageUrl: mockImageUrl,
           userId: user.uid,
+          quantity: quantityValue,
+          isPublic: !!formData.isPublic,
           updatedAt: new Date()
         };
 
         if (formData.status === 'predaná') {
           cardData.soldAt = new Date();
-          cardData.soldPrice = formData.soldPrice ? parseFloat(formData.soldPrice) :
-                              (formData.current ? parseFloat(formData.current) : null);
+          cardData.soldPrice = formData.soldPrice ? parseMoney(formData.soldPrice) :
+                              (formData.current ? parseMoney(formData.current) : null);
         } else if (editingCard?.status === 'predaná') {
           cardData.soldAt = null;
           cardData.soldPrice = null;
@@ -284,12 +330,14 @@ function CardManager({ user }) {
 
       const cardData = {
         item: formData.item.trim(),
-        buy: formData.buy ? parseFloat(formData.buy) : null,
-        current: formData.current ? parseFloat(formData.current) : null,
+        buy: formData.buy ? parseMoney(formData.buy) : null,
+        current: formData.current ? parseMoney(formData.current) : null,
         status: formData.status,
         note: formData.note.trim(),
         imageUrl: imageUrl,
         userId: user.uid,
+        quantity: quantityValue,
+        isPublic: !!formData.isPublic,
         updatedAt: serverTimestamp()
       };
 
@@ -303,8 +351,8 @@ function CardManager({ user }) {
           cardData.soldAt = serverTimestamp();
         }
         // Použiť soldPrice ak je zadaná, inak použiť current cenu
-        cardData.soldPrice = formData.soldPrice ? parseFloat(formData.soldPrice) :
-                            (formData.current ? parseFloat(formData.current) : null);
+        cardData.soldPrice = formData.soldPrice ? parseMoney(formData.soldPrice) :
+                            (formData.current ? parseMoney(formData.current) : null);
       } else {
         // Ak sa karta vracia do zbierky, vymazať predajné údaje
         if (editingCard && editingCard.status === 'predaná') {
@@ -348,38 +396,93 @@ function CardManager({ user }) {
 
   const openSellModal = (card) => {
     setSellCard(card);
-    setSellPrice(card.current || '');
+    setSellPrice(card.current != null ? String(Math.round(convertFromEur(card.current) * 100) / 100) : '');
+    setSellQuantity(String(card.quantity || 1));
     setShowSellModal(true);
   };
 
   const handleSellConfirm = async () => {
     if (!sellCard) return;
 
-    const finalPrice = sellPrice ? parseFloat(sellPrice) : (sellCard.current || 0);
+    const sellQty = Math.max(1, parseInt(sellQuantity, 10) || 1);
+    const maxQty = sellCard.quantity || 1;
+    if (sellQty > maxQty) {
+      toast.warning(`Maximálny počet kusov na predaj je ${maxQty}`);
+      return;
+    }
+
+    const finalPriceEur = sellPrice ? convertToEur(parseFloat(sellPrice)) : (sellCard.current || 0);
 
     try {
       if (isMockAuth) {
-        setCards(prev => prev.map(c => (
-          c.id === sellCard.id
-            ? { ...c, status: 'predaná', soldPrice: finalPrice, soldAt: new Date(), updatedAt: new Date() }
-            : c
-        )));
-        toast.success(`Karta predaná za €${finalPrice.toFixed(2)}`);
+        setCards(prev => {
+          const updated = [];
+          prev.forEach(c => {
+            if (c.id !== sellCard.id) {
+              updated.push(c);
+              return;
+            }
+
+            const remainingQty = (c.quantity || 1) - sellQty;
+            if (remainingQty > 0) {
+              updated.push({ ...c, quantity: remainingQty, updatedAt: new Date() });
+              updated.push({
+                ...c,
+                id: createMockId(),
+                status: 'predaná',
+                quantity: sellQty,
+                soldPrice: finalPriceEur,
+                soldAt: new Date(),
+                updatedAt: new Date()
+              });
+            } else {
+              updated.push({ ...c, status: 'predaná', quantity: sellQty, soldPrice: finalPriceEur, soldAt: new Date(), updatedAt: new Date() });
+            }
+          });
+          return updated;
+        });
+        toast.success(`Karta predaná za ${formatMoney(finalPriceEur)} (${sellQty}x)`);
         setShowSellModal(false);
         setSellCard(null);
         setSellPrice('');
+        setSellQuantity('1');
         return;
       }
-      await updateDoc(doc(db, 'cards', sellCard.id), {
-        status: 'predaná',
-        soldPrice: finalPrice,
-        soldAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      toast.success(`Karta predaná za €${finalPrice.toFixed(2)}`);
+      if (sellQty < maxQty) {
+        const remainingQty = maxQty - sellQty;
+        await updateDoc(doc(db, 'cards', sellCard.id), {
+          quantity: remainingQty,
+          updatedAt: serverTimestamp()
+        });
+
+        await addDoc(collection(db, 'cards'), {
+          userId: sellCard.userId,
+          item: sellCard.item,
+          buy: sellCard.buy || null,
+          current: sellCard.current || null,
+          status: 'predaná',
+          soldPrice: finalPriceEur,
+          soldAt: serverTimestamp(),
+          note: sellCard.note || '',
+          imageUrl: sellCard.imageUrl || null,
+          quantity: sellQty,
+          isPublic: !!sellCard.isPublic,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await updateDoc(doc(db, 'cards', sellCard.id), {
+          status: 'predaná',
+          soldPrice: finalPriceEur,
+          soldAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+      toast.success(`Karta predaná za ${formatMoney(finalPriceEur)} (${sellQty}x)`);
       setShowSellModal(false);
       setSellCard(null);
       setSellPrice('');
+      setSellQuantity('1');
     } catch (err) {
       toast.error('Chyba pri predaji: ' + err.message);
     }
@@ -391,6 +494,11 @@ function CardManager({ user }) {
     button: { padding: '10px 16px', minHeight: '44px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', fontWeight: '500' },
     primaryButton: { background: '#1d4ed8', color: '#fff', borderColor: '#1d4ed8' }
   };
+  const sellPriceValue = parseFloat(sellPrice) || 0;
+  const sellQtyValue = Math.max(1, parseInt(sellQuantity, 10) || 1);
+  const sellBuyValue = sellCard ? convertFromEur(sellCard.buy || 0) : 0;
+  const sellProfitTotal = (sellPriceValue - sellBuyValue) * sellQtyValue;
+  const sellProfitPercent = sellBuyValue > 0 ? ((sellPriceValue - sellBuyValue) / sellBuyValue * 100).toFixed(1) : '0.0';
 
   return (
     <div style={styles.container}>
@@ -460,6 +568,7 @@ function CardManager({ user }) {
             )}
           </button>
           <LanguageSwitcher darkMode={darkMode} />
+          <CurrencySwitcher darkMode={darkMode} />
           {userRole === 'admin' && (
             <button
               onClick={() => window.open('/admin_panel.html', '_blank')}
@@ -485,23 +594,23 @@ function CardManager({ user }) {
           /* Desktop: všetky stats v jednom riadku */
           <div style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{fmt(totalCurrent)} €</div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{formatMoney(totalCurrent)}</div>
               <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.value')}</div>
             </div>
             <div>
-              <div style={{ fontSize: '28px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{fmt(profit)} €</div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{formatMoney(profit)}</div>
               <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.unrealized')}</div>
             </div>
             <div>
-              <div style={{ fontSize: '28px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{fmt(soldProfit)} €</div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{formatMoney(soldProfit)}</div>
               <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.realized')}</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{collectionCards.length}</div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{totalCollectionPieces}</div>
               <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.inCollection')}</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{soldCards.length}</div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold' }}>{totalSoldPieces}</div>
               <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.sold')}</div>
             </div>
           </div>
@@ -520,11 +629,11 @@ function CardManager({ user }) {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div>
-                  <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{fmt(totalCurrent)} €</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{formatMoney(totalCurrent)}</div>
                   <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.value')}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{fmt(profit)} €</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: profit >= 0 ? '#10b981' : '#ef4444' }}>{profit >= 0 ? '+' : ''}{formatMoney(profit)}</div>
                   <div style={{ fontSize: '11px', opacity: 0.85 }}>{t('manager.stats.unrealized')}</div>
                 </div>
               </div>
@@ -541,15 +650,15 @@ function CardManager({ user }) {
                 paddingTop: '12px'
               }}>
                 <div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{fmt(soldProfit)} €</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: soldProfit >= 0 ? '#10b981' : '#ef4444' }}>{soldProfit >= 0 ? '+' : ''}{formatMoney(soldProfit)}</div>
                   <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.realized')}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{collectionCards.length}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{totalCollectionPieces}</div>
                   <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.inCollection')}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{soldCards.length}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{totalSoldPieces}</div>
                   <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '4px' }}>{t('manager.stats.sold')}</div>
                 </div>
               </div>
@@ -794,9 +903,10 @@ function CardManager({ user }) {
                 {card.imageUrl && <img src={card.imageUrl} alt="foto" style={{ width: '100%', height: '180px', objectFit: 'contain', borderRadius: '8px', cursor: 'pointer', background: darkMode ? '#0f172a' : '#f8fafc' }} onClick={(e) => { e.stopPropagation(); setImageModalUrl(card.imageUrl); }} />}
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{card.item}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px' }}>
-                  {card.buy != null && <div><span style={{ color: '#64748b' }}>{t('manager.card.buy')}</span><div style={{ fontWeight: '600' }}>{fmt(card.buy)} €</div></div>}
-                  {card.current != null && <div><span style={{ color: '#64748b' }}>{t('manager.card.current')}</span><div style={{ fontWeight: '600' }}>{fmt(card.current)} €</div></div>}
-                  {card.status === 'predaná' && card.soldPrice != null && <div><span style={{ color: '#64748b' }}>{t('manager.card.soldFor')}</span><div style={{ fontWeight: '600' }}>{fmt(card.soldPrice)} €</div></div>}
+                  {card.buy != null && <div><span style={{ color: '#64748b' }}>{t('manager.card.buy')}</span><div style={{ fontWeight: '600' }}>{formatMoney(card.buy)}</div></div>}
+                  {card.current != null && <div><span style={{ color: '#64748b' }}>{t('manager.card.current')}</span><div style={{ fontWeight: '600' }}>{formatMoney(card.current)}</div></div>}
+                  {card.status === 'predaná' && card.soldPrice != null && <div><span style={{ color: '#64748b' }}>{t('manager.card.soldFor')}</span><div style={{ fontWeight: '600' }}>{formatMoney(card.soldPrice)}</div></div>}
+                  <div><span style={{ color: '#64748b' }}>{t('manager.card.quantity')}</span><div style={{ fontWeight: '600' }}>{card.quantity || 1}</div></div>
                   <div><span style={{ color: '#64748b' }}>{t('manager.card.status')}</span><div style={{ fontWeight: '600', padding: '4px 8px', borderRadius: '6px', display: 'inline-block', background: card.status === 'zbierka' ? '#d1fae5' : '#fee2e2', color: card.status === 'zbierka' ? '#065f46' : '#991b1b' }}>{card.status === 'zbierka' ? t('manager.filter.collection') : t('manager.filter.sold')}</div></div>
                 </div>
                 {card.note && <div style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic' }}>{card.note}</div>}
@@ -844,9 +954,10 @@ function CardManager({ user }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '14px', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.item}</div>
                   <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                    {card.buy != null && <span>{t('manager.card.buy')} {fmt(card.buy)}€</span>}
-                    {card.current != null && <span style={{ fontWeight: '600', color: darkMode ? '#f8fafc' : '#0f172a' }}>{t('manager.card.current')} {fmt(card.current)}€</span>}
-                    {card.status === 'predaná' && card.soldPrice != null && <span style={{ color: '#10b981' }}>{t('manager.card.soldFor')} {fmt(card.soldPrice)}€</span>}
+                    {card.buy != null && <span>{t('manager.card.buy')} {formatMoney(card.buy)}</span>}
+                    {card.current != null && <span style={{ fontWeight: '600', color: darkMode ? '#f8fafc' : '#0f172a' }}>{t('manager.card.current')} {formatMoney(card.current)}</span>}
+                    {card.status === 'predaná' && card.soldPrice != null && <span style={{ color: '#10b981' }}>{t('manager.card.soldFor')} {formatMoney(card.soldPrice)}</span>}
+                    <span>{t('manager.card.quantity')} {card.quantity || 1}</span>
                   </div>
                 </div>
                 <span style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', background: card.status === 'zbierka' ? '#d1fae5' : '#fee2e2', color: card.status === 'zbierka' ? '#065f46' : '#991b1b', whiteSpace: 'nowrap' }}>{card.status === 'zbierka' ? t('manager.filter.collection') : t('manager.filter.sold')}</span>
@@ -927,7 +1038,7 @@ function CardManager({ user }) {
                       fontWeight: '700',
                       color: darkMode ? '#10b981' : '#059669'
                     }}>
-                      {card.current != null ? `${fmt(card.current)}€` : '—'}
+                      {card.current != null ? `${formatCurrencyCompact((card.current || 0) * (card.quantity || 1), language)}` : '—'}
                     </span>
                     <span style={{
                       padding: '2px 6px',
@@ -969,33 +1080,35 @@ function CardManager({ user }) {
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>#</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.photo')}</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.item')}</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.buyPrice')}</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.currentPrice')}</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.soldPrice')}</th>
+              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.buyPrice')} ({currency})</th>
+              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.currentPrice')} ({currency})</th>
+              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.quantity')}</th>
+              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.soldPrice')} ({currency})</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.status')}</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.actions')}</th>
             </tr></thead>
             <tbody>
               {filteredCards.length === 0 ? (
-                <tr><td colSpan="8" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>{cards.length === 0 ? `📋 ${t('manager.empty')}` : `🔍 ${t('manager.noResults')}`}</td></tr>
+                <tr><td colSpan="9" style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>{cards.length === 0 ? `📋 ${t('manager.empty')}` : `🔍 ${t('manager.noResults')}`}</td></tr>
               ) : (
                 filteredCards.map((card, idx) => (
                   <tr key={card.id} onClick={() => openEditModal(card)} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`, cursor: 'pointer', transition: 'background 0.15s' }} onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#334155' : '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
                     <td style={{ padding: '10px 12px' }}>{idx + 1}</td>
                     <td style={{ padding: '10px 12px' }}>{card.imageUrl ? <img src={card.imageUrl} alt="foto" style={{ width: '56px', height: '56px', objectFit: 'contain', borderRadius: '10px', border: '1px solid #e5e7eb', background: darkMode ? '#0f172a' : '#f8fafc' }} onClick={(e) => { e.stopPropagation(); setImageModalUrl(card.imageUrl); }} /> : <span style={{ color: '#64748b' }}>—</span>}</td>
                     <td style={{ padding: '10px 12px' }}>{card.item}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.buy != null ? fmt(card.buy) : ''}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.buy != null ? formatMoney(card.buy) : ''}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                       {card.current != null ? (
                         <span>
-                          {fmt(card.current)}
+                          {formatMoney(card.current)}
                           {card.ebayPriceSource && (
                             <span style={{ marginLeft: '6px', fontSize: '14px' }} title="Cena z eBay">📊</span>
                           )}
                         </span>
                       ) : ''}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.status === 'predaná' && card.soldPrice != null ? fmt(card.soldPrice) : ''}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.quantity || 1}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.status === 'predaná' && card.soldPrice != null ? formatMoney(card.soldPrice) : ''}</td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', background: card.status === 'zbierka' ? '#d1fae5' : '#fee2e2', color: card.status === 'zbierka' ? '#065f46' : '#991b1b' }}>{card.status === 'zbierka' ? t('manager.filter.collection') : t('manager.filter.sold')}</span>
                     </td>
@@ -1062,8 +1175,8 @@ function CardManager({ user }) {
                       <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }}><option value="zbierka">{t('manager.filter.collection')}</option><option value="predaná">{t('manager.filter.sold')}</option></select>
                     </div>
                     <div>
-                      <label style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '6px' }}>{t('manager.modal.buyPrice')}</label>
-                      <input type="number" step="0.01" min="0" value={formData.buy} onChange={(e) => setFormData({ ...formData, buy: e.target.value })} placeholder="€" style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }} />
+                      <label style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '6px' }}>{t('manager.modal.buyPrice')} ({currency})</label>
+                      <input type="number" step="0.01" min="0" value={formData.buy} onChange={(e) => setFormData({ ...formData, buy: e.target.value })} placeholder={currency} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }} />
                     </div>
                   </div>
 
@@ -1071,17 +1184,45 @@ function CardManager({ user }) {
                   <div style={{ display: 'grid', gridTemplateColumns: (formData.status === 'predaná' && isDesktop) ? '1fr 1fr' : '1fr', gap: '14px' }}>
                     <div>
                       <label style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '6px' }}>
-                        {t('manager.modal.currentPrice')}
+                        {t('manager.modal.currentPrice')} ({currency})
                         {editingCard && editingCard.ebayPriceSource && <span style={{ marginLeft: '6px', color: '#10b981' }}>📊</span>}
                       </label>
-                      <input type="number" step="0.01" min="0" value={formData.current} onChange={(e) => setFormData({ ...formData, current: e.target.value })} placeholder="€" style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }} />
+                      <input type="number" step="0.01" min="0" value={formData.current} onChange={(e) => setFormData({ ...formData, current: e.target.value })} placeholder={currency} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }} />
                     </div>
                     {formData.status === 'predaná' && (
                       <div>
-                        <label style={{ fontSize: '12px', fontWeight: '600', color: '#10b981', display: 'block', marginBottom: '6px' }}>{t('manager.modal.soldPrice')}</label>
-                        <input type="number" step="0.01" min="0" value={formData.soldPrice} onChange={(e) => setFormData({ ...formData, soldPrice: e.target.value })} placeholder={formData.current || '€'} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px', borderColor: '#10b981' }} />
+                        <label style={{ fontSize: '12px', fontWeight: '600', color: '#10b981', display: 'block', marginBottom: '6px' }}>{t('manager.modal.soldPrice')} ({currency})</label>
+                        <input type="number" step="0.01" min="0" value={formData.soldPrice} onChange={(e) => setFormData({ ...formData, soldPrice: e.target.value })} placeholder={formData.current || currency} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px', borderColor: '#10b981' }} />
                       </div>
                     )}
+                  </div>
+
+                  {/* Quantity + Public row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: isDesktop ? '1fr 1fr' : '1fr', gap: '14px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '6px' }}>{t('manager.modal.quantity')}</label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                        placeholder="1"
+                        style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!formData.isPublic}
+                        onChange={(e) => setFormData({ ...formData, isPublic: e.target.checked })}
+                        style={{ width: '18px', height: '18px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#f8fafc' : '#0f172a' }}>{t('manager.modal.public')}</div>
+                        <div style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#64748b' }}>{t('manager.modal.publicHint')}</div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Note */}
@@ -1196,17 +1337,17 @@ function CardManager({ user }) {
               }}>
                 <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px' }}>{sellCard.item}</div>
                 <div style={{ fontSize: '13px', color: '#64748b' }}>
-                  {t('manager.sell.buyPrice')} €{sellCard.buy?.toFixed(2) || '0.00'}
+                  {t('manager.sell.buyPrice')} {formatMoney(sellCard.buy || 0)}
                 </div>
                 {sellCard.current && (
                   <div style={{ fontSize: '13px', color: '#64748b' }}>
-                    {t('manager.sell.currentValue')} €{sellCard.current.toFixed(2)}
+                    {t('manager.sell.currentValue')} {formatMoney(sellCard.current)}
                   </div>
                 )}
               </div>
 
               <label style={{ fontSize: '14px', fontWeight: '500', color: darkMode ? '#cbd5e1' : '#475569', display: 'block', marginBottom: '8px' }}>
-                {t('manager.sell.priceLabel')}
+                {t('manager.sell.priceLabel')} ({currency})
               </label>
               <input
                 type="number"
@@ -1229,21 +1370,57 @@ function CardManager({ user }) {
                 }}
               />
 
-              {sellPrice && sellCard.buy && (
+              <div style={{ marginTop: '12px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '500', color: darkMode ? '#cbd5e1' : '#475569', display: 'block', marginBottom: '6px' }}>
+                {t('manager.sell.quantityLabel')} ({t('manager.sell.quantityHint')} {sellCard.quantity || 1})
+              </label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                max={sellCard.quantity || 1}
+                value={sellQuantity}
+                onChange={(e) => setSellQuantity(e.target.value)}
+                  style={{
+                    ...styles.button,
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    background: darkMode ? '#334155' : '#fff',
+                    color: darkMode ? '#f8fafc' : '#0f172a',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    padding: '12px'
+                  }}
+                />
+              </div>
+
+              {sellPrice && sellCard.buy != null && (
                 <div style={{
                   marginTop: '12px',
                   padding: '12px',
                   borderRadius: '8px',
-                  background: parseFloat(sellPrice) >= sellCard.buy ? '#d1fae5' : '#fee2e2',
-                  color: parseFloat(sellPrice) >= sellCard.buy ? '#065f46' : '#991b1b',
+                  background: sellPriceValue >= sellBuyValue ? '#d1fae5' : '#fee2e2',
+                  color: sellPriceValue >= sellBuyValue ? '#065f46' : '#991b1b',
                   fontSize: '14px',
                   fontWeight: '600',
                   textAlign: 'center'
                 }}>
-                  {parseFloat(sellPrice) >= sellCard.buy ? '📈' : '📉'} {t('manager.sell.profitLoss')} €{(parseFloat(sellPrice) - sellCard.buy).toFixed(2)}
+                  {sellPriceValue >= sellBuyValue ? '📈' : '📉'} {t('manager.sell.profitLoss')} {formatMoney(convertToEur(sellProfitTotal))}
                   <span style={{ fontWeight: '400', marginLeft: '8px' }}>
-                    ({((parseFloat(sellPrice) - sellCard.buy) / sellCard.buy * 100).toFixed(1)}%)
+                    ({sellProfitPercent}%)
                   </span>
+                </div>
+              )}
+
+              {sellPrice && (
+                <div style={{
+                  marginTop: '10px',
+                  textAlign: 'center',
+                  fontSize: '13px',
+                  color: darkMode ? '#94a3b8' : '#64748b'
+                }}>
+                  {t('manager.sell.totalLabel')}: {formatMoney(convertToEur(sellPriceValue * sellQtyValue))}
                 </div>
               )}
             </div>
@@ -1349,8 +1526,8 @@ function CardManager({ user }) {
               }}>
                 <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>{deleteCard.item}</div>
                 <div style={{ fontSize: '13px', color: '#64748b', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                  {deleteCard.buy != null && <span>{t('manager.card.buy')} €{deleteCard.buy?.toFixed(2)}</span>}
-                  {deleteCard.current != null && <span>{t('manager.card.current')} €{deleteCard.current?.toFixed(2)}</span>}
+                  {deleteCard.buy != null && <span>{t('manager.card.buy')} {formatMoney(deleteCard.buy)}</span>}
+                  {deleteCard.current != null && <span>{t('manager.card.current')} {formatMoney(deleteCard.current)}</span>}
                 </div>
               </div>
               <p style={{ margin: '16px 0 0 0', fontSize: '14px', color: darkMode ? '#94a3b8' : '#64748b', textAlign: 'center' }}>

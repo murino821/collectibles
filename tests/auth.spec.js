@@ -91,7 +91,7 @@ test.describe('Authenticated (mock) experience', () => {
       buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9])
     });
     await page.getByRole('button', { name: /Uložiť|Save|Ulozit/i }).click();
-    await expect(page.locator(`text=${itemName}`)).toBeVisible();
+    await expect(page.locator(`text=${itemName}`).first()).toBeVisible();
 
     // Edit item (add note) - click the item name directly (stable across view modes)
     const itemCell = page.getByText(itemName).first();

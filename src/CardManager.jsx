@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
 import { auth, db, storage } from './firebase';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, orderBy, limit, setDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, orderBy, limit, setDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import ImportCSV from './assets/components/ImportCSV';
 import NotificationPanel from './assets/components/NotificationPanel';
@@ -94,8 +94,12 @@ function CardManager({ user }) {
   const [showModal, setShowModal] = useState(false);
   const [editingCard, setEditingCard] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('zbierka');
   const [photoFilter, setPhotoFilter] = useState(false);
+  const [sortKey, setSortKey] = useState('item');
+  const [sortDir, setSortDir] = useState('asc');
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkQuantity, setBulkQuantity] = useState('');
   const [viewMode, setViewMode] = useState(() => {
     // Default: table for desktop, list for mobile
     return window.innerWidth >= 768 ? 'table' : 'list';
@@ -233,8 +237,22 @@ function CardManager({ user }) {
     }
     if (statusFilter !== 'all') filtered = filtered.filter(c => c.status === statusFilter);
     if (photoFilter) filtered = filtered.filter(c => c.imageUrl);
-    setFilteredCards(filtered);
-  }, [cards, searchQuery, statusFilter, photoFilter]);
+    const sorted = [...filtered].sort((a, b) => {
+      const dir = sortDir === 'asc' ? 1 : -1;
+      if (sortKey === 'item') {
+        return dir * String(a.item || '').localeCompare(String(b.item || ''));
+      }
+      const getValue = (card) => {
+        const qty = card.quantity || 1;
+        if (sortKey === 'buy') return (parseFloat(card.buy) || 0) * qty;
+        if (sortKey === 'current') return (parseFloat(card.current) || 0) * qty;
+        if (sortKey === 'sold') return (parseFloat(card.soldPrice) || 0) * qty;
+        return 0;
+      };
+      return dir * (getValue(a) - getValue(b));
+    });
+    setFilteredCards(sorted);
+  }, [cards, searchQuery, statusFilter, photoFilter, sortKey, sortDir]);
 
   const collectionCards = cards.filter(c => c.status === 'zbierka');
   const soldCards = cards.filter(c => c.status === 'predaná');
@@ -489,6 +507,61 @@ function CardManager({ user }) {
   };
   const handleFileChange = (e) => { const file = e.target.files?.[0]; if (file) setFormData({ ...formData, imageFile: file }); };
 
+  const toggleSelectCard = (cardId) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(cardId)) next.delete(cardId);
+      else next.add(cardId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(prev => {
+      if (prev.size === filteredCards.length && filteredCards.length > 0) {
+        return new Set();
+      }
+      return new Set(filteredCards.map(c => c.id));
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const applyBulkUpdate = async ({ quantity, isPublic }) => {
+    if (selectedIds.size === 0) return;
+    const qtyValue = quantity != null && String(quantity).trim() !== '' ? Math.max(1, parseInt(quantity, 10) || 1) : null;
+    const updates = {};
+    if (qtyValue != null) updates.quantity = qtyValue;
+    if (typeof isPublic === 'boolean') updates.isPublic = isPublic;
+    if (!Object.keys(updates).length) return;
+
+    try {
+      if (isMockAuth) {
+        setCards(prev => prev.map(c => (
+          selectedIds.has(c.id) ? { ...c, ...updates, updatedAt: new Date() } : c
+        )));
+        toast.success(`Upravené položky: ${selectedIds.size}`);
+        clearSelection();
+        setBulkQuantity('');
+        return;
+      }
+
+      const batch = writeBatch(db);
+      selectedIds.forEach(id => {
+        batch.update(doc(db, 'cards', id), {
+          ...updates,
+          updatedAt: serverTimestamp()
+        });
+      });
+      await batch.commit();
+      toast.success(`Upravené položky: ${selectedIds.size}`);
+      clearSelection();
+      setBulkQuantity('');
+    } catch (err) {
+      toast.error('Chyba pri hromadnej úprave: ' + err.message);
+    }
+  };
+
   const styles = {
     container: { fontFamily: 'system-ui, -apple-system, Arial', padding: isDesktop ? '24px' : '12px', backgroundColor: darkMode ? '#0f172a' : '#f8fafc', color: darkMode ? '#f8fafc' : '#0f172a', minHeight: '100vh', transition: 'all 0.3s' },
     button: { padding: '10px 16px', minHeight: '44px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', transition: 'all 0.2s', fontSize: '14px', fontWeight: '500' },
@@ -705,6 +778,24 @@ function CardManager({ user }) {
                 <option value="photo">{t('manager.filter.withPhoto')}</option>
               </select>
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value)}
+                style={{ ...styles.button, width: '100%', background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', padding: '8px 12px', minHeight: '0', height: 'auto' }}
+              >
+                <option value="item">{t('manager.sort.item')}</option>
+                <option value="buy">{t('manager.sort.buy')}</option>
+                <option value="current">{t('manager.sort.current')}</option>
+                <option value="sold">{t('manager.sort.sold')}</option>
+              </select>
+              <button
+                onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+                style={{ ...styles.button, width: '100%', background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', padding: '8px 12px', minHeight: '0', height: 'auto' }}
+              >
+                {sortDir === 'asc' ? t('manager.sort.asc') : t('manager.sort.desc')}
+              </button>
+            </div>
             <button
               onClick={openAddModal}
               style={{ ...styles.button, ...styles.primaryButton, flex: 1, minWidth: 0 }}
@@ -824,6 +915,24 @@ function CardManager({ user }) {
                     <option value="photo">{t('manager.filter.withPhoto')}</option>
                   </select>
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 calc(50% - 4px)' }}>
+                  <select
+                    value={sortKey}
+                    onChange={(e) => setSortKey(e.target.value)}
+                    style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+                  >
+                    <option value="item">{t('manager.sort.item')}</option>
+                    <option value="buy">{t('manager.sort.buy')}</option>
+                    <option value="current">{t('manager.sort.current')}</option>
+                    <option value="sold">{t('manager.sort.sold')}</option>
+                  </select>
+                  <button
+                    onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+                    style={{ ...styles.button, width: '100%', flex: 1, background: darkMode ? '#1e293b' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a' }}
+                  >
+                    {sortDir === 'asc' ? t('manager.sort.asc') : t('manager.sort.desc')}
+                  </button>
+                </div>
                 <div style={{
                   display: 'flex',
                   gap: '4px',
@@ -893,6 +1002,57 @@ function CardManager({ user }) {
         </div>
       )}
 
+      {selectedIds.size > 0 && (
+        <div style={{
+          marginBottom: '16px',
+          padding: '12px',
+          borderRadius: '12px',
+          border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+          background: darkMode ? '#1e293b' : '#fff',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '10px',
+          alignItems: 'center'
+        }}>
+          <div style={{ fontWeight: '600' }}>
+            {selectedIds.size}× vybrané
+          </div>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            placeholder={t('manager.modal.quantity')}
+            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px', width: '140px' }}
+            value={bulkQuantity}
+            onChange={(e) => setBulkQuantity(e.target.value)}
+          />
+          <button
+            onClick={() => applyBulkUpdate({ quantity: bulkQuantity })}
+            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px', background: '#eef2ff', border: '1px solid #c7d2fe', color: '#1e3a8a' }}
+          >
+            {t('manager.bulk.apply')}
+          </button>
+          <button
+            onClick={() => applyBulkUpdate({ isPublic: true })}
+            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px', background: '#dbeafe', border: '1px solid #93c5fd', color: '#1e3a8a' }}
+          >
+            {t('manager.bulk.public')}
+          </button>
+          <button
+            onClick={() => applyBulkUpdate({ isPublic: false })}
+            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px', background: '#e2e8f0', border: '1px solid #cbd5e1', color: '#334155' }}
+          >
+            {t('manager.bulk.private')}
+          </button>
+          <button
+            onClick={clearSelection}
+            style={{ ...styles.button, minHeight: '36px', padding: '8px 10px' }}
+          >
+            {t('manager.modal.cancel')}
+          </button>
+        </div>
+      )}
+
       {viewMode === 'cards' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
           {filteredCards.length === 0 ? (
@@ -900,6 +1060,16 @@ function CardManager({ user }) {
           ) : (
             filteredCards.map((card) => (
               <div className="card-item" key={card.id} style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(card.id)}
+                    onChange={() => toggleSelectCard(card.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>#{card.id?.slice?.(0, 4) || ''}</span>
+                </div>
                 {card.imageUrl && <img src={card.imageUrl} alt="foto" style={{ width: '100%', height: '180px', objectFit: 'contain', borderRadius: '8px', cursor: 'pointer', background: darkMode ? '#0f172a' : '#f8fafc' }} onClick={(e) => { e.stopPropagation(); setImageModalUrl(card.imageUrl); }} />}
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }}>{card.item}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px' }}>
@@ -950,6 +1120,13 @@ function CardManager({ user }) {
           ) : (
             filteredCards.map((card, idx) => (
               <div key={card.id} onClick={() => openEditModal(card)} style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', transition: 'all 0.15s' }} onMouseEnter={(e) => { e.currentTarget.style.background = darkMode ? '#334155' : '#f8fafc'; e.currentTarget.style.borderColor = darkMode ? '#475569' : '#cbd5e1'; }} onMouseLeave={(e) => { e.currentTarget.style.background = darkMode ? '#1e293b' : '#fff'; e.currentTarget.style.borderColor = darkMode ? '#334155' : '#e2e8f0'; }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(card.id)}
+                  onChange={() => toggleSelectCard(card.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ width: '16px', height: '16px' }}
+                />
                 <span style={{ fontSize: '12px', color: '#64748b', minWidth: '24px' }}>{idx + 1}.</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '14px', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.item}</div>
@@ -992,6 +1169,20 @@ function CardManager({ user }) {
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = darkMode ? '#667eea' : '#667eea'; e.currentTarget.style.transform = 'scale(1.02)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = darkMode ? '#334155' : '#e2e8f0'; e.currentTarget.style.transform = 'scale(1)'; }}
               >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(card.id)}
+                  onChange={() => toggleSelectCard(card.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: 'absolute',
+                    top: '10px',
+                    left: '10px',
+                    width: '18px',
+                    height: '18px',
+                    zIndex: 3
+                  }}
+                />
                 {card.imageUrl ? (
                   <div style={{ position: 'relative', paddingTop: '100%', background: darkMode ? '#0f172a' : '#f8fafc' }}>
                     <img
@@ -1077,7 +1268,14 @@ function CardManager({ user }) {
           <div style={{ overflow: 'auto', maxHeight: '67vh', borderRadius: '12px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, background: darkMode ? '#1e293b' : '#fff' }}>
             <table style={{ width: '100%', minWidth: isDesktop ? 'auto' : '800px', borderCollapse: 'collapse', fontSize: '14px', background: darkMode ? '#1e293b' : '#fff' }}>
             <thead><tr style={{ background: darkMode ? '#334155' : '#f8fafc' }}>
-              <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>#</th>
+              <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size > 0 && selectedIds.size === filteredCards.length}
+                  onChange={toggleSelectAll}
+                  style={{ width: '16px', height: '16px' }}
+                />
+              </th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.photo')}</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.item')}</th>
               <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.buyPrice')} ({currency})</th>
@@ -1093,7 +1291,15 @@ function CardManager({ user }) {
               ) : (
                 filteredCards.map((card, idx) => (
                   <tr key={card.id} onClick={() => openEditModal(card)} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`, cursor: 'pointer', transition: 'background 0.15s' }} onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#334155' : '#f8fafc'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-                    <td style={{ padding: '10px 12px' }}>{idx + 1}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(card.id)}
+                        onChange={() => toggleSelectCard(card.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ width: '16px', height: '16px' }}
+                      />
+                    </td>
                     <td style={{ padding: '10px 12px' }}>{card.imageUrl ? <img src={card.imageUrl} alt="foto" style={{ width: '56px', height: '56px', objectFit: 'contain', borderRadius: '10px', border: '1px solid #e5e7eb', background: darkMode ? '#0f172a' : '#f8fafc' }} onClick={(e) => { e.stopPropagation(); setImageModalUrl(card.imageUrl); }} /> : <span style={{ color: '#64748b' }}>—</span>}</td>
                     <td style={{ padding: '10px 12px' }}>{card.item}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.buy != null ? formatMoney(card.buy) : ''}</td>

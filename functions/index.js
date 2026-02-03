@@ -423,60 +423,65 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
   }
 });
 
+async function refreshExchangeRatesAndStats() {
+  console.log("💱 Refreshing ECB exchange rates...");
+
+  const [usd, czk] = await Promise.all([
+    fetchEcbRate("USD"),
+    fetchEcbRate("CZK"),
+  ]);
+
+  if (!usd?.value || !czk?.value) {
+    throw new Error("Missing ECB rate values");
+  }
+
+  const rates = {
+    EUR: 1,
+    USD: usd.value,
+    CZK: czk.value,
+  };
+
+  const asOf = usd.asOf || czk.asOf || null;
+
+  await db.collection("exchangeRates").doc("latest").set({
+    base: "EUR",
+    rates,
+    asOf,
+    source: "ECB",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+
+  // Update global stats (total value in EUR)
+  const cardsSnapshot = await db.collection("cards")
+      .where("status", "==", "zbierka")
+      .get();
+
+  let totalValueEur = 0;
+  let totalItems = 0;
+  cardsSnapshot.forEach((doc) => {
+    const card = doc.data();
+    const qty = card.quantity || 1;
+    totalItems += qty;
+    totalValueEur += (card.current || 0) * qty;
+  });
+
+  await db.collection("stats").doc("global").set({
+    totalCollectionValueEur: parseFloat(totalValueEur.toFixed(2)),
+    totalItems,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    source: "cards",
+    asOf,
+  }, {merge: true});
+
+  console.log("✅ ECB rates updated");
+  return {rates, asOf, totalValueEur, totalItems};
+}
+
 exports.refreshExchangeRatesV2 = onSchedule(
     {schedule: "10 6 * * *", timeZone: "Europe/Bratislava"},
     async () => {
-      console.log("💱 Refreshing ECB exchange rates...");
-
       try {
-        const [usd, czk] = await Promise.all([
-          fetchEcbRate("USD"),
-          fetchEcbRate("CZK"),
-        ]);
-
-        if (!usd?.value || !czk?.value) {
-          throw new Error("Missing ECB rate values");
-        }
-
-        const rates = {
-          EUR: 1,
-          USD: usd.value,
-          CZK: czk.value,
-        };
-
-        const asOf = usd.asOf || czk.asOf || null;
-
-        await db.collection("exchangeRates").doc("latest").set({
-          base: "EUR",
-          rates,
-          asOf,
-          source: "ECB",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, {merge: true});
-
-        // Update global stats (total value in EUR)
-        const cardsSnapshot = await db.collection("cards")
-            .where("status", "==", "zbierka")
-            .get();
-
-        let totalValueEur = 0;
-        let totalItems = 0;
-        cardsSnapshot.forEach((doc) => {
-          const card = doc.data();
-          const qty = card.quantity || 1;
-          totalItems += qty;
-          totalValueEur += (card.current || 0) * qty;
-        });
-
-        await db.collection("stats").doc("global").set({
-          totalCollectionValueEur: parseFloat(totalValueEur.toFixed(2)),
-          totalItems,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          source: "cards",
-          asOf,
-        }, {merge: true});
-
-        console.log("✅ ECB rates updated");
+        await refreshExchangeRatesAndStats();
         return null;
       } catch (error) {
         console.error("💥 ECB refresh failed:", error);
@@ -484,6 +489,26 @@ exports.refreshExchangeRatesV2 = onSchedule(
       }
     },
 );
+
+exports.refreshExchangeRatesNowV2 = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User not logged in");
+  }
+
+  const userId = request.auth.uid;
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (!userDoc.exists || userDoc.data().role !== "admin") {
+    throw new HttpsError("permission-denied", "Only admins can refresh exchange rates");
+  }
+
+  try {
+    const result = await refreshExchangeRatesAndStats();
+    return {success: true, ...result};
+  } catch (error) {
+    console.error("Manual ECB refresh failed:", error);
+    throw new HttpsError("internal", error.message || "ECB refresh failed");
+  }
+});
 
 // =========================================================
 // V2 FUNCTIONS (parallel to v1, for Node 22 migration)

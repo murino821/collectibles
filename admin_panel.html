@@ -384,14 +384,26 @@
     import { getFirestore, doc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
     import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBlAhlya-NNp8gCxGPBIPxxCgDa6l9AXo8",
-      authDomain: "your-card-collection-2026.firebaseapp.com",
-      projectId: "your-card-collection-2026",
-      storageBucket: "your-card-collection-2026.firebasestorage.app",
-      messagingSenderId: "620171462959",
-      appId: "1:620171462959:web:28ecb209a009d16db679da"
-    };
+    const isTest = window.location.hostname.includes('your-card-collection-2026-test');
+    const isAllowlistedAdmin = (email) =>
+      isTest && ['miroslav.svajda@gmail.com'].includes((email || '').toLowerCase());
+    const firebaseConfig = isTest
+      ? {
+          apiKey: "AIzaSyAKAr3NdF7VUtoajv9mtiitjXZPStuR0oY",
+          authDomain: "your-card-collection-2026-test.firebaseapp.com",
+          projectId: "your-card-collection-2026-test",
+          storageBucket: "your-card-collection-2026-test.firebasestorage.app",
+          messagingSenderId: "419835800440",
+          appId: "1:419835800440:web:0ef4cd6572ce21afca768d"
+        }
+      : {
+          apiKey: "AIzaSyBlAhlya-NNp8gCxGPBIPxxCgDa6l9AXo8",
+          authDomain: "your-card-collection-2026.firebaseapp.com",
+          projectId: "your-card-collection-2026",
+          storageBucket: "your-card-collection-2026.firebasestorage.app",
+          messagingSenderId: "620171462959",
+          appId: "1:620171462959:web:28ecb209a009d16db679da"
+        };
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -414,7 +426,8 @@
 
       // Check if user is admin
       const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists() || userDoc.data().role !== 'admin') {
+      const isAdmin = isAllowlistedAdmin(user.email) || (userDoc.exists() && userDoc.data().role === 'admin');
+      if (!isAdmin) {
         const loginStatus = document.getElementById('loginStatus');
         loginStatus.className = 'status error';
         loginStatus.style.display = 'block';

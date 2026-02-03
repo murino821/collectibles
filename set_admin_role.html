@@ -100,7 +100,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const googleProvider = new GoogleAuthProvider();
-    const functions = getFunctions(app);
+    const functions = getFunctions(app, 'us-central1');
 
     window.loginAndSetAdmin = async function() {
       const status = document.getElementById('status');
@@ -140,7 +140,12 @@
       } catch (error) {
         console.error('Error:', error);
         status.className = 'status error';
-        status.innerHTML = `<strong>❌ Chyba:</strong><br><code>${error.message}</code>`;
+        status.innerHTML = `
+          <strong>❌ Chyba:</strong><br>
+          <code>${error.message}</code><br><br>
+          <strong>Kód:</strong> ${error.code || 'n/a'}<br>
+          <strong>Detail:</strong> ${error.details ? JSON.stringify(error.details) : 'n/a'}
+        `;
         btn.disabled = false;
       }
     };

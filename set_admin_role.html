@@ -76,7 +76,7 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
     import { getAuth, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-    import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
     const isTest = window.location.hostname.includes('your-card-collection-2026-test');
     const firebaseConfig = isTest
@@ -99,8 +99,8 @@
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db = getFirestore(app);
     const googleProvider = new GoogleAuthProvider();
+    const functions = getFunctions(app);
 
     window.loginAndSetAdmin = async function() {
       const status = document.getElementById('status');
@@ -117,60 +117,18 @@
 
         status.innerHTML = '<strong>✅ Prihlásený:</strong> ' + user.email + '<br><strong>⏳ Nastavujem admin rolu...</strong>';
 
-        // Get current user data
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-        const currentData = userDoc.exists() ? userDoc.data() : {};
-
-        // Set admin role and limits
-        await setDoc(userDocRef, {
-          ...currentData,
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || currentData.displayName || 'Admin',
-          photoURL: user.photoURL || currentData.photoURL || '',
-
-          // Admin role
-          role: 'admin',
-          subscriptionStatus: 'active',
-          subscriptionStartDate: currentData.subscriptionStartDate || new Date(),
-
-          // Admin limits
-          cardLimit: 999999,
-          currentCardCount: currentData.currentCardCount || 0,
-
-          // Admin update frequency
-          priceUpdatesEnabled: true,
-          updateIntervalDays: 15,
-          updatesPerMonth: 2,
-          updateDayOfMonth: currentData.updateDayOfMonth || Math.floor(Math.random() * 28) + 1,
-          updateHourOfDay: currentData.updateHourOfDay || 11,
-          nextUpdateDate: currentData.nextUpdateDate || new Date(),
-
-          // Notifications
-          emailNotifications: currentData.emailNotifications || false,
-          inAppNotifications: currentData.inAppNotifications !== false,
-
-          // Timestamps
-          createdAt: currentData.createdAt || new Date(),
-          updatedAt: new Date(),
-        }, { merge: true });
-
-        // Get updated data to display
-        const updatedDoc = await getDoc(userDocRef);
-        const updatedData = updatedDoc.data();
+        const grantAdmin = httpsCallable(functions, 'grantAdminRoleV2');
+        const result = await grantAdmin();
+        const updatedData = result.data || {};
 
         status.className = 'status success';
         status.innerHTML = `
           <strong>✅ Admin rola nastavená!</strong><br><br>
           <strong>User ID:</strong> ${user.uid}<br>
           <strong>Email:</strong> ${user.email}<br>
-          <strong>Rola:</strong> ${updatedData.role}<br>
-          <strong>Card Limit:</strong> ${updatedData.cardLimit === 999999 ? '∞' : updatedData.cardLimit}<br>
-          <strong>Update Interval:</strong> ${updatedData.updateIntervalDays} dní<br><br>
+          <strong>Rola:</strong> ${updatedData.role || 'admin'}<br><br>
           <strong>Kompletné dáta:</strong><br>
-          <pre>${JSON.stringify(updatedData, null, 2)}</pre>
-          <br>
+          <pre>${JSON.stringify(updatedData, null, 2)}</pre><br>
           <strong>🎉 Môžeš teraz otvoriť admin panel:</strong><br>
           <a href="admin_panel.html" target="_blank" style="color: #3b82f6; text-decoration: underline;">admin_panel.html</a>
         `;

@@ -19,6 +19,12 @@ const {globalLimiter} = require("./rateLimiter");
 const ECB_BASE_URL =
   "https://data-api.ecb.europa.eu/service/data/EXR/D.{CURRENCY}.EUR.SP00.A?format=jsondata";
 
+const ADMIN_ALLOWLIST = ["miroslav.svajda@gmail.com"];
+const isTestProject = () => {
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "";
+  return projectId.endsWith("-test") || projectId.includes("your-card-collection-2026-test");
+};
+
 async function getLatestExchangeRates() {
   try {
     const snap = await db.collection("exchangeRates").doc("latest").get();
@@ -839,6 +845,54 @@ exports.updateUserRoleV2 = onCall(async (request) => {
     console.error("Error updating user role:", error);
     throw new HttpsError("internal", error.message);
   }
+});
+
+exports.grantAdminRoleV2 = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User not logged in");
+  }
+
+  if (!isTestProject()) {
+    throw new HttpsError("permission-denied", "Admin bootstrap is only allowed in TEST");
+  }
+
+  const email = request.auth.token?.email || "";
+  if (!ADMIN_ALLOWLIST.includes(email)) {
+    throw new HttpsError("permission-denied", "Email is not allowed to bootstrap admin role");
+  }
+
+  const userId = request.auth.uid;
+  const userRecord = await admin.auth().getUser(userId);
+  const userDocRef = db.collection("users").doc(userId);
+  const userDoc = await userDocRef.get();
+  const currentData = userDoc.exists ? userDoc.data() : {};
+  const nowTs = admin.firestore.Timestamp.now();
+
+  await userDocRef.set({
+    uid: userId,
+    email: userRecord.email || email,
+    displayName: userRecord.displayName || currentData.displayName || email.split("@")[0] || "Admin",
+    photoURL: userRecord.photoURL || currentData.photoURL || null,
+    role: "admin",
+    subscriptionStatus: "active",
+    subscriptionStartDate: currentData.subscriptionStartDate || nowTs,
+    cardLimit: 999999,
+    currentCardCount: currentData.currentCardCount || 0,
+    priceUpdatesEnabled: true,
+    updateIntervalDays: 15,
+    updatesPerMonth: 2,
+    updateDayOfMonth: currentData.updateDayOfMonth || Math.floor(Math.random() * 28) + 1,
+    updateHourOfDay: currentData.updateHourOfDay || 11,
+    nextUpdateDate: currentData.nextUpdateDate || nowTs,
+    emailNotifications: currentData.emailNotifications || false,
+    inAppNotifications: currentData.inAppNotifications !== false,
+    createdAt: currentData.createdAt || nowTs,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    roleUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    roleUpdatedBy: userId,
+  }, {merge: true});
+
+  return {success: true, userId, role: "admin"};
 });
 
 exports.updateNextUpdateDateV2 = onCall(async (request) => {

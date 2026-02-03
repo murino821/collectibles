@@ -18,6 +18,27 @@ function ProfileEditor({ user, isOpen, onClose, onUpdate, isMockAuth = false }) 
       setError(t('profile.error.empty', lang));
       return;
     }
+    const trimmedPhoto = photoURL.trim();
+    if (trimmedPhoto && trimmedPhoto.toLowerCase().startsWith('data:')) {
+      setError(
+        lang === 'en'
+          ? 'Avatar must be a public URL (https://...), data URLs are not allowed.'
+          : lang === 'cz'
+            ? 'Avatar musí být veřejná URL (https://...), data URL nejsou povoleny.'
+            : 'Avatar musí byť verejná URL (https://...), data URL nie sú povolené.'
+      );
+      return;
+    }
+    if (trimmedPhoto && trimmedPhoto.length > 500) {
+      setError(
+        lang === 'en'
+          ? 'Avatar URL is too long (max 500 characters).'
+          : lang === 'cz'
+            ? 'URL avatara je príliš dlhá (max 500 znakov).'
+            : 'URL avatara je príliš dlhá (max 500 znakov).'
+      );
+      return;
+    }
 
     if (isMockAuth) {
       onUpdate({ displayName: displayName.trim(), photoURL: photoURL.trim() });
@@ -33,14 +54,14 @@ function ProfileEditor({ user, isOpen, onClose, onUpdate, isMockAuth = false }) 
       // Use setDoc with merge to create or update
       await setDoc(userRef, {
         displayName: displayName.trim(),
-        photoURL: photoURL.trim() || null,
+        photoURL: trimmedPhoto || null,
         email: user.email,
         updatedAt: new Date(),
         createdAt: new Date() // Will only be set on first create
       }, { merge: true });
 
       console.log('Profile saved successfully');
-      onUpdate({ displayName: displayName.trim(), photoURL: photoURL.trim() });
+      onUpdate({ displayName: displayName.trim(), photoURL: trimmedPhoto });
       onClose();
     } catch (err) {
       console.error('Error saving profile:', err);

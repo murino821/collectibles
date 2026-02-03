@@ -1279,7 +1279,6 @@ function CardManager({ user }) {
                   {sortKey === 'current' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </button>
               </th>
-              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.quantity')}</th>
               <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>
                 <button
                   onClick={() => toggleSort('sold')}
@@ -1289,6 +1288,7 @@ function CardManager({ user }) {
                   {sortKey === 'sold' ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
                 </button>
               </th>
+              <th style={{ padding: '10px 12px', textAlign: 'right', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.quantity')}</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.status')}</th>
               <th style={{ padding: '10px 12px', textAlign: 'left', position: 'sticky', top: 0, background: darkMode ? '#334155' : '#f8fafc', zIndex: 10 }}>{t('manager.table.actions')}</th>
             </tr></thead>
@@ -1320,8 +1320,8 @@ function CardManager({ user }) {
                         </span>
                       ) : ''}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.quantity || 1}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.status === 'predaná' && card.soldPrice != null ? formatMoney(card.soldPrice) : ''}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{card.quantity || 1}</td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', background: card.status === 'zbierka' ? '#d1fae5' : '#fee2e2', color: card.status === 'zbierka' ? '#065f46' : '#991b1b' }}>{card.status === 'zbierka' ? t('manager.filter.collection') : t('manager.filter.sold')}</span>
                     </td>

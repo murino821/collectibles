@@ -248,6 +248,7 @@
         <div class="user-info">
           Prihlásený ako: <strong id="adminEmail"></strong>
           <button onclick="refreshExchangeRatesNow()" style="margin-left: 20px; background: #0ea5e9;">🔄 Aktualizovať kurzový lístok</button>
+          <button id="grantAdminBtn" onclick="ensureAdminRole()" style="margin-left: 10px; background: #111827; display: none;">🧪 Nastaviť admin rolu</button>
           <button onclick="window.location.href='/'" style="margin-left: 10px; background: #3b82f6;">← Späť na zbierku</button><button onclick="window.location.href='/admin_logs.html'" style="margin-left: 10px; background: #10b981;">📋 História aktualizácií</button>
           <button onclick="logout()" style="margin-left: 10px; background: #ef4444;">Odhlásiť sa</button>
         </div>
@@ -407,6 +408,11 @@
 
     let currentUser = null;
     let selectedUserId = null;
+    const grantAdminBtn = document.getElementById('grantAdminBtn');
+
+    if (isTest && grantAdminBtn) {
+      grantAdminBtn.style.display = 'inline-block';
+    }
 
     // Auth state observer
     onAuthStateChanged(auth, async (user) => {
@@ -454,6 +460,22 @@
 
     window.logout = async function() {
       await signOut(auth);
+    };
+
+    window.ensureAdminRole = async function() {
+      const status = document.getElementById('status');
+      status.className = 'status loading';
+      status.innerHTML = '<strong>⏳ Nastavujem admin rolu...</strong>';
+      try {
+        const grantAdmin = httpsCallable(functions, 'grantAdminRoleV2');
+        const result = await grantAdmin();
+        status.className = 'status success';
+        status.innerHTML = `<strong>✅ Admin rola nastavená</strong><br>${JSON.stringify(result.data || {})}`;
+      } catch (error) {
+        console.error('Grant admin error:', error);
+        status.className = 'status error';
+        status.innerHTML = `<strong>❌ Chyba:</strong><br><code>${error.message}</code>`;
+      }
     };
 
     window.loadUsers = async function() {

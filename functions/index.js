@@ -24,6 +24,11 @@ const isTestProject = () => {
   const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "";
   return projectId.endsWith("-test") || projectId.includes("your-card-collection-2026-test");
 };
+const isAllowlistedAdmin = (request) => {
+  if (!request?.auth) return false;
+  const email = request.auth.token?.email || "";
+  return isTestProject() && ADMIN_ALLOWLIST.includes(email);
+};
 
 async function getLatestExchangeRates() {
   try {
@@ -503,7 +508,7 @@ exports.refreshExchangeRatesNowV2 = onCall(async (request) => {
 
   const userId = request.auth.uid;
   const userDoc = await db.collection("users").doc(userId).get();
-  if (!userDoc.exists || userDoc.data().role !== "admin") {
+  if (!isAllowlistedAdmin(request) && (!userDoc.exists || userDoc.data().role !== "admin")) {
     throw new HttpsError("permission-denied", "Only admins can refresh exchange rates");
   }
 
@@ -601,8 +606,8 @@ exports.updateUserCollectionV2 = onCall(async (request) => {
   const callerDoc = await db.collection("users").doc(callerId).get();
   const callerData = callerDoc.data();
   const callerRole = callerData?.role || "standard";
-  const isAdmin = callerRole === "admin";
-  const isPremiumOrAdmin = callerRole === "premium" || callerRole === "admin";
+  const isAdmin = isAllowlistedAdmin(request) || callerRole === "admin";
+  const isPremiumOrAdmin = isAllowlistedAdmin(request) || callerRole === "premium" || callerRole === "admin";
 
   if (!isPremiumOrAdmin) {
     throw new HttpsError(
@@ -751,7 +756,7 @@ exports.getAllUsersV2 = onCall(async (request) => {
   const userId = request.auth.uid;
 
   const userDoc = await db.collection("users").doc(userId).get();
-  if (!userDoc.exists || userDoc.data().role !== "admin") {
+  if (!isAllowlistedAdmin(request) && (!userDoc.exists || userDoc.data().role !== "admin")) {
     throw new HttpsError("permission-denied", "Only admins can access this function");
   }
 
@@ -798,7 +803,7 @@ exports.updateUserRoleV2 = onCall(async (request) => {
   const adminId = request.auth.uid;
 
   const adminDoc = await db.collection("users").doc(adminId).get();
-  if (!adminDoc.exists || adminDoc.data().role !== "admin") {
+  if (!isAllowlistedAdmin(request) && (!adminDoc.exists || adminDoc.data().role !== "admin")) {
     throw new HttpsError("permission-denied", "Only admins can update user roles");
   }
 
@@ -903,7 +908,7 @@ exports.updateNextUpdateDateV2 = onCall(async (request) => {
   const adminId = request.auth.uid;
 
   const adminDoc = await db.collection("users").doc(adminId).get();
-  if (!adminDoc.exists || adminDoc.data().role !== "admin") {
+  if (!isAllowlistedAdmin(request) && (!adminDoc.exists || adminDoc.data().role !== "admin")) {
     throw new HttpsError("permission-denied", "Only admins can update next update dates");
   }
 

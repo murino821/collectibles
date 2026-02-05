@@ -193,6 +193,19 @@ function extractSignals(cardName) {
   };
 }
 
+function buildSignalsSummary(signals) {
+  if (!signals) return null;
+  return {
+    playerTokens: signals.playerTokens || [],
+    phrases: signals.phrases || [],
+    year: signals.year || null,
+    yearRange: signals.yearRange || null,
+    cardNumber: signals.cardNumber || null,
+    serial: signals.serial || null,
+    grade: signals.grade || null,
+  };
+}
+
 function buildQueryString(parts) {
   const seen = new Set();
   const unique = [];
@@ -362,7 +375,7 @@ function filterRelevantResults(results, signals, mode) {
     .slice(0, 80);
 }
 
-async function searchEbayTextOnce(query, fxRates) {
+async function searchEbayTextOnceDetailed(query, fxRates) {
   const token = await getEbayToken();
   await globalLimiter.throttle();
 
@@ -404,13 +417,17 @@ async function searchEbayTextOnce(query, fxRates) {
   }
 
   const data = await response.json();
-  if (!data.itemSummaries || data.itemSummaries.length === 0) {
-    return [];
-  }
+  const rawCount = data.itemSummaries ? data.itemSummaries.length : 0;
+  const items = data.itemSummaries
+    ? data.itemSummaries.map((item) => mapItemSummary(item, fxRates)).filter(Boolean)
+    : [];
 
-  return data.itemSummaries
-    .map((item) => mapItemSummary(item, fxRates))
-    .filter(Boolean);
+  return {items, rawCount};
+}
+
+async function searchEbayTextOnce(query, fxRates) {
+  const {items} = await searchEbayTextOnceDetailed(query, fxRates);
+  return items;
 }
 
 async function fetchImageBase64(imageUrl) {
@@ -422,46 +439,7 @@ async function fetchImageBase64(imageUrl) {
   return Buffer.from(arrayBuffer).toString("base64");
 }
 
-/**
- * Search eBay for ACTIVE listings based on text
- * @param {string} cardName - Original card name
- * @param {Object|null} fxRates - FX rates (EUR base)
- * @return {Promise<Array>} Array of listing results
- */
-async function searchEbayCard(cardName, fxRates = null) {
-  if (!cardName) return [];
-
-  const signals = extractSignals(cardName);
-  const queries = buildSearchQueries(signals);
-
-  let aggregated = [];
-
-  for (const query of queries) {
-    if (!query) continue;
-    console.log(`eBay text search query: "${query}"`);
-    const results = await searchEbayTextOnce(query, fxRates);
-    aggregated = mergeUniqueResults(aggregated, results);
-    if (aggregated.length >= MIN_RESULTS_TARGET) break;
-  }
-
-  if (!aggregated.length) {
-    console.log(`No eBay results for: ${cardName}`);
-    return [];
-  }
-
-  return filterRelevantResults(aggregated, signals, "text");
-}
-
-/**
- * Search eBay for ACTIVE listings based on image
- * @param {string} imageUrl - Public image URL
- * @param {string} cardName - Original card name (for relevance scoring)
- * @param {Object|null} fxRates - FX rates (EUR base)
- * @return {Promise<Array>} Array of listing results
- */
-async function searchEbayCardByImage(imageUrl, cardName, fxRates = null) {
-  if (!imageUrl) return [];
-
+async function searchEbayImageOnceDetailed(imageUrl, fxRates) {
   const token = await getEbayToken();
   await globalLimiter.throttle();
 
@@ -500,20 +478,122 @@ async function searchEbayCardByImage(imageUrl, cardName, fxRates = null) {
   }
 
   const data = await response.json();
-  if (!data.itemSummaries || data.itemSummaries.length === 0) {
+  const rawCount = data.itemSummaries ? data.itemSummaries.length : 0;
+  const items = data.itemSummaries
+    ? data.itemSummaries.map((item) => mapItemSummary(item, fxRates)).filter(Boolean)
+    : [];
+
+  return {items, rawCount};
+}
+
+/**
+ * Search eBay for ACTIVE listings based on text
+ * @param {string} cardName - Original card name
+ * @param {Object|null} fxRates - FX rates (EUR base)
+ * @return {Promise<Array>} Array of listing results
+ */
+async function searchEbayCard(cardName, fxRates = null) {
+  if (!cardName) return [];
+
+  const signals = extractSignals(cardName);
+  const queries = buildSearchQueries(signals);
+
+  let aggregated = [];
+
+  for (const query of queries) {
+    if (!query) continue;
+    console.log(`eBay text search query: "${query}"`);
+    const results = await searchEbayTextOnce(query, fxRates);
+    aggregated = mergeUniqueResults(aggregated, results);
+    if (aggregated.length >= MIN_RESULTS_TARGET) break;
+  }
+
+  if (!aggregated.length) {
+    console.log(`No eBay results for: ${cardName}`);
     return [];
   }
 
-  const signals = cardName ? extractSignals(cardName) : null;
-  const mapped = data.itemSummaries
-    .map((item) => mapItemSummary(item, fxRates))
-    .filter(Boolean);
+  return filterRelevantResults(aggregated, signals, "text");
+}
 
-  if (!signals) {
-    return mapped;
+async function searchEbayCardWithDebug(cardName, fxRates = null) {
+  if (!cardName) {
+    return {results: [], debug: {mode: "text", reason: "empty-name"}};
   }
 
-  return filterRelevantResults(mapped, signals, "image");
+  const signals = extractSignals(cardName);
+  const queries = buildSearchQueries(signals);
+  const queryStats = [];
+
+  let aggregated = [];
+
+  for (const query of queries) {
+    if (!query) continue;
+    console.log(`eBay text search query: "${query}"`);
+    const {items, rawCount} = await searchEbayTextOnceDetailed(query, fxRates);
+    aggregated = mergeUniqueResults(aggregated, items);
+    queryStats.push({
+      query,
+      rawCount,
+      mappedCount: items.length,
+      aggregatedCount: aggregated.length,
+    });
+    if (aggregated.length >= MIN_RESULTS_TARGET) break;
+  }
+
+  const filtered = aggregated.length ? filterRelevantResults(aggregated, signals, "text") : [];
+
+  return {
+    results: filtered,
+    debug: {
+      mode: "text",
+      signals: buildSignalsSummary(signals),
+      queries: queryStats,
+      aggregatedCount: aggregated.length,
+      filteredCount: filtered.length,
+    },
+  };
+}
+
+/**
+ * Search eBay for ACTIVE listings based on image
+ * @param {string} imageUrl - Public image URL
+ * @param {string} cardName - Original card name (for relevance scoring)
+ * @param {Object|null} fxRates - FX rates (EUR base)
+ * @return {Promise<Array>} Array of listing results
+ */
+async function searchEbayCardByImage(imageUrl, cardName, fxRates = null) {
+  if (!imageUrl) return [];
+  const {items} = await searchEbayImageOnceDetailed(imageUrl, fxRates);
+  if (!items.length) return [];
+
+  const signals = cardName ? extractSignals(cardName) : null;
+  if (!signals) {
+    return items;
+  }
+
+  return filterRelevantResults(items, signals, "image");
+}
+
+async function searchEbayCardByImageWithDebug(imageUrl, cardName, fxRates = null) {
+  if (!imageUrl) {
+    return {results: [], debug: {mode: "image", reason: "missing-image"}};
+  }
+
+  const {items, rawCount} = await searchEbayImageOnceDetailed(imageUrl, fxRates);
+  const signals = cardName ? extractSignals(cardName) : null;
+  const filtered = signals ? filterRelevantResults(items, signals, "image") : items;
+
+  return {
+    results: filtered,
+    debug: {
+      mode: "image",
+      signals: buildSignalsSummary(signals),
+      rawCount,
+      mappedCount: items.length,
+      filteredCount: filtered.length,
+    },
+  };
 }
 
 function percentile(sorted, percentileValue) {
@@ -565,7 +645,7 @@ function getAuctionFloor(results) {
  * @param {Array} results - Results from searchEbayCard or searchEbayCardByImage
  * @return {number|null} Estimated realistic price in EUR
  */
-function calculateEstimatedPrice(results) {
+function calculateEstimatedPriceDetailed(results) {
   if (!results || results.length === 0) return null;
 
   const fixedResults = results.filter((item) => !item.isAuctionOnly);
@@ -577,7 +657,7 @@ function calculateEstimatedPrice(results) {
     .filter((price) => Number.isFinite(price))
     .sort((a, b) => a - b);
 
-  if (!prices.length) return null;
+  if (!prices.length) return {price: null, debug: {reason: "no-prices"}};
 
   const trimPercent = prices.length >= 8 ? 0.15 : prices.length >= 5 ? 0.1 : 0;
   const trimCount = Math.floor(prices.length * trimPercent);
@@ -626,7 +706,34 @@ function calculateEstimatedPrice(results) {
     console.log(`Auction floor applied: €${auctionFloor.toFixed(2)}`);
   }
 
-  return parseFloat(finalPrice.toFixed(2));
+  const debug = {
+    totalResults: results.length,
+    fixedResults: fixedResults.length,
+    auctionCandidates: results.filter((item) => item.isAuctionOnly).length,
+    auctionFloor: auctionFloor ? parseFloat(auctionFloor.toFixed(2)) : null,
+    priceStats: {
+      min: prices[0],
+      max: prices[prices.length - 1],
+      median: median != null ? parseFloat(median.toFixed(2)) : null,
+      average: parseFloat(baseAverage.toFixed(2)),
+      q1: q1 != null ? parseFloat(q1.toFixed(2)) : null,
+      q3: q3 != null ? parseFloat(q3.toFixed(2)) : null,
+      spreadRatio: parseFloat(spreadRatio.toFixed(3)),
+      trimmedCount: trimmedPrices.length,
+    },
+    discountPct: parseFloat((discountPct * 100).toFixed(1)),
+    avgMatchScore: matchScores.length
+      ? parseFloat((matchScores.reduce((sum, score) => sum + score, 0) / matchScores.length).toFixed(3))
+      : null,
+    appliedFloor: !!auctionFloor,
+  };
+
+  return {price: parseFloat(finalPrice.toFixed(2)), debug};
+}
+
+function calculateEstimatedPrice(results) {
+  const detailed = calculateEstimatedPriceDetailed(results);
+  return detailed ? detailed.price : null;
 }
 
 /**
@@ -642,7 +749,10 @@ function enhanceQuery(cardName) {
 
 module.exports = {
   searchEbayCard,
+  searchEbayCardWithDebug,
   searchEbayCardByImage,
+  searchEbayCardByImageWithDebug,
   calculateEstimatedPrice,
+  calculateEstimatedPriceDetailed,
   enhanceQuery,
 };

@@ -13,7 +13,11 @@ const fetch = require("node-fetch");
 admin.initializeApp();
 
 const db = admin.firestore();
-const {searchEbayCard, searchEbayCardByImage, calculateEstimatedPrice} = require("./ebayAPI");
+const {
+  searchEbayCardWithDebug,
+  searchEbayCardByImageWithDebug,
+  calculateEstimatedPriceDetailed,
+} = require("./ebayAPI");
 const {globalLimiter} = require("./rateLimiter");
 
 const ECB_BASE_URL =
@@ -74,7 +78,7 @@ async function fetchEcbRate(currency) {
  * @param {string} userId - Firebase user ID
  * @return {Object} Update results
  */
-async function updateUserCollection(userId) {
+async function updateUserCollection(userId, options = {}) {
   console.log(`🔄 Starting collection update for user: ${userId}`);
 
   const fxRates = await getLatestExchangeRates();
@@ -82,6 +86,7 @@ async function updateUserCollection(userId) {
   const userData = userSnap.exists ? userSnap.data() : {};
   const pricingMode = userData?.pricingMode || "text";
   const usingImageMode = pricingMode === "image";
+  const triggerType = options.triggerType || "scheduled";
   console.log(`🧭 Pricing mode for user ${userId}: ${pricingMode}`);
 
   // Get all user's cards
@@ -116,6 +121,8 @@ async function updateUserCollection(userId) {
   let successCount = 0;
   let failCount = 0;
   const errors = [];
+  const debugSamples = [];
+  const DEBUG_SAMPLE_LIMIT = 20;
 
   // Batch processing
   const BATCH_SIZE = 20;
@@ -144,6 +151,18 @@ async function updateUserCollection(userId) {
       const card = cardDoc.data();
       const cardId = cardDoc.id;
 
+      const debugEntry = {
+        cardId,
+        cardName: card.item,
+        mode: pricingMode,
+        input: {},
+        search: null,
+        pricing: null,
+        topResults: [],
+        outcome: null,
+        error: null,
+      };
+
       try {
         let results = [];
         if (usingImageMode) {
@@ -152,23 +171,43 @@ async function updateUserCollection(userId) {
             console.log(`  ⚠ ${card.item}: Missing image for image-based pricing`);
             failCount++;
             errors.push({cardId, cardName: card.item, error: "Missing image for image-based pricing"});
+            debugEntry.input = {imageUrl: imageUrl || null};
+            debugEntry.outcome = "missing-image";
             await statusRef.update({
               successCount,
               failCount,
               progress: successCount + failCount,
             }).catch(() => { /* Ignore if status doc doesn't exist */ });
+            if (debugSamples.length < DEBUG_SAMPLE_LIMIT) debugSamples.push(debugEntry);
             continue;
           }
 
           console.log(`🖼️  Image search: ${card.item}`);
-          results = await searchEbayCardByImage(imageUrl, card.item, fxRates);
+          debugEntry.input = {imageUrl};
+          const searchResponse = await searchEbayCardByImageWithDebug(imageUrl, card.item, fxRates);
+          results = searchResponse.results || [];
+          debugEntry.search = searchResponse.debug || null;
         } else {
           console.log(`🔍 Text search: ${card.item}`);
-          results = await searchEbayCard(card.item, fxRates);
+          debugEntry.input = {name: card.item};
+          const searchResponse = await searchEbayCardWithDebug(card.item, fxRates);
+          results = searchResponse.results || [];
+          debugEntry.search = searchResponse.debug || null;
         }
 
+        debugEntry.topResults = results.slice(0, 3).map((item) => ({
+          title: item.title,
+          price: item.price,
+          matchScore: typeof item.matchScore === "number" ? Number(item.matchScore.toFixed(3)) : null,
+          isAuctionOnly: !!item.isAuctionOnly,
+          bidCount: item.bidCount || 0,
+        }));
+
         if (results.length > 0) {
-          const estimatedPrice = calculateEstimatedPrice(results);
+          const priceInfo = calculateEstimatedPriceDetailed(results);
+          const estimatedPrice = priceInfo?.price || null;
+          debugEntry.pricing = priceInfo?.debug || null;
+          debugEntry.estimatedPrice = estimatedPrice;
 
           if (estimatedPrice) {
             // Create price history entry with actual Date (serverTimestamp cannot be used in arrays)
@@ -189,16 +228,19 @@ async function updateUserCollection(userId) {
             });
 
             console.log(`  ✓ ${card.item}: $${estimatedPrice}`);
+            debugEntry.outcome = "updated";
             successCount++;
           } else {
             console.log(`  ⚠ ${card.item}: Cannot calculate price`);
             failCount++;
             errors.push({cardId, cardName: card.item, error: "Cannot calculate price"});
+            debugEntry.outcome = "no-price";
           }
         } else {
           console.log(`  ✗ ${card.item}: No eBay results`);
           failCount++;
           errors.push({cardId, cardName: card.item, error: "No eBay results"});
+          debugEntry.outcome = "no-results";
         }
 
         // Update status after each card
@@ -212,6 +254,8 @@ async function updateUserCollection(userId) {
         console.error(`  ❌ Error updating card ${cardId}:`, error.message);
         failCount++;
         errors.push({cardId, cardName: card.item, error: error.message});
+        debugEntry.outcome = "error";
+        debugEntry.error = error.message;
 
         // Update status after error
         await statusRef.update({
@@ -226,6 +270,10 @@ async function updateUserCollection(userId) {
           await new Promise((resolve) => setTimeout(resolve, 60000));
         }
       }
+
+      if (debugSamples.length < DEBUG_SAMPLE_LIMIT) {
+        debugSamples.push(debugEntry);
+      }
     }
 
     // Pause between batches
@@ -238,6 +286,7 @@ async function updateUserCollection(userId) {
   // Create update log
   const logRef = await db.collection("updateLogs").add({
     userId,
+    userEmail: userData?.email || null,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     totalCards: cards.length,
     successCount,
@@ -245,7 +294,9 @@ async function updateUserCollection(userId) {
     errors: errors.slice(0, 10), // First 10 errors only
     apiCallsUsed: successCount + failCount,
     status: failCount === 0 ? "success" : (successCount > 0 ? "partial" : "failed"),
-    triggerType: "scheduled",
+    triggerType,
+    pricingMode,
+    debugSamples,
   });
 
   // Create notification for user
@@ -578,7 +629,7 @@ exports.checkScheduledUpdatesV2 = onSchedule(
           console.log(`👤 Processing user: ${userId} (scheduled for ${userData.updateHourOfDay}:00)`);
 
           try {
-            await updateUserCollection(userId);
+            await updateUserCollection(userId, {triggerType: "scheduled"});
 
             const intervalDays = userData.updateIntervalDays || 30;
             const nextUpdate = new Date();
@@ -596,6 +647,9 @@ exports.checkScheduledUpdatesV2 = onSchedule(
 
             await db.collection("updateLogs").add({
               userId,
+              userEmail: userData?.email || null,
+              pricingMode: userData?.pricingMode || "text",
+              triggerType: "scheduled",
               status: "failed",
               error: error.message,
               timestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -674,7 +728,7 @@ exports.updateUserCollectionV2 = onCall(async (request) => {
       lastManualUpdate: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    updateUserCollection(targetUserId)
+    updateUserCollection(targetUserId, {triggerType: "manual"})
         .then(async (result) => {
           await statusRef.update({
             status: "completed",
@@ -811,6 +865,51 @@ exports.getAllUsersV2 = onCall(async (request) => {
     return {success: true, users};
   } catch (error) {
     console.error("Error getting users:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+exports.getUpdateLogsV2 = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User not logged in");
+  }
+
+  const userId = request.auth.uid;
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (!isAllowlistedAdmin(request) && (!userDoc.exists || userDoc.data().role !== "admin")) {
+    throw new HttpsError("permission-denied", "Only admins can access this function");
+  }
+
+  const limit = Math.min(Math.max(request.data?.limit || 30, 1), 100);
+
+  try {
+    const logsSnapshot = await db.collection("updateLogs")
+        .orderBy("timestamp", "desc")
+        .limit(limit)
+        .get();
+
+    const logs = logsSnapshot.docs.map((docSnap) => {
+      const data = docSnap.data() || {};
+      return {
+        id: docSnap.id,
+        userId: data.userId || null,
+        userEmail: data.userEmail || null,
+        timestamp: data.timestamp?.toDate?.().toISOString?.() || null,
+        totalCards: data.totalCards ?? data.cardsProcessed ?? 0,
+        successCount: data.successCount ?? 0,
+        failCount: data.failCount ?? 0,
+        status: data.status || null,
+        triggerType: data.triggerType || null,
+        pricingMode: data.pricingMode || null,
+        apiCallsUsed: data.apiCallsUsed ?? null,
+        errors: data.errors || [],
+        debugSamples: data.debugSamples || [],
+      };
+    });
+
+    return {success: true, logs};
+  } catch (error) {
+    console.error("Error loading update logs:", error);
     throw new HttpsError("internal", error.message);
   }
 });

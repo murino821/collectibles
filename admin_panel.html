@@ -484,6 +484,7 @@
 
       // Load users
       await loadUsers();
+      await loadUpdateLogs();
     });
 
     window.loginWithGoogle = async function() {
@@ -572,6 +573,69 @@
         console.error('Error loading users:', error);
         status.className = 'status error';
         status.innerHTML = `<strong>❌ Chyba:</strong> ${error.message}`;
+      }
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    window.loadUpdateLogs = async function() {
+      const tbody = document.getElementById('updateLogsTableBody');
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Načítavam históriu...</td></tr>`;
+
+      try {
+        const getUpdateLogs = httpsCallable(functions, 'getUpdateLogsV2');
+        const result = await getUpdateLogs({ limit: 30 });
+        const logs = result.data?.logs || [];
+
+        if (!logs.length) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Žiadne záznamy</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = '';
+        logs.forEach(log => {
+          const tr = document.createElement('tr');
+          const date = log.timestamp ? new Date(log.timestamp).toLocaleString('sk-SK') : 'N/A';
+          const userLabel = log.userEmail || log.userId || 'N/A';
+          const processed = log.totalCards ?? 0;
+          const success = log.successCount ?? 0;
+          const fail = log.failCount ?? 0;
+          const typeLabel = `${log.triggerType || log.status || 'n/a'}${log.pricingMode ? ` / ${log.pricingMode}` : ''}`;
+
+          const debugText = log.debugSamples?.length ? JSON.stringify(log.debugSamples, null, 2) : '';
+          const errorText = log.errors?.length ? JSON.stringify(log.errors, null, 2) : '';
+
+          const detailHtml = debugText || errorText
+            ? `
+              <details>
+                <summary>Detail</summary>
+                ${debugText ? `<div style="margin-top:8px;"><strong>Debug samples</strong><pre style="white-space: pre-wrap; font-size: 11px; background: #f8fafc; padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto;">${escapeHtml(debugText)}</pre></div>` : ''}
+                ${errorText ? `<div style="margin-top:8px;"><strong>Errors</strong><pre style="white-space: pre-wrap; font-size: 11px; background: #fef2f2; padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto;">${escapeHtml(errorText)}</pre></div>` : ''}
+              </details>
+            `
+            : '-';
+
+          tr.innerHTML = `
+            <td>${date}</td>
+            <td>${userLabel}</td>
+            <td>${processed}</td>
+            <td>${success}</td>
+            <td>${fail}</td>
+            <td>${typeLabel}</td>
+            <td>${detailHtml}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (error) {
+        console.error('Error loading update logs:', error);
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444;">Chyba: ${error.message}</td></tr>`;
       }
     };
 

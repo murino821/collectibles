@@ -4,6 +4,7 @@
  */
 
 const fetch = require("node-fetch");
+const {globalLimiter} = require("./rateLimiter");
 
 // Get credentials from environment variables (.env file)
 // Using process.env instead of deprecated functions.config()
@@ -23,6 +24,58 @@ const BROWSE_BASE = EBAY_ENV === "sandbox" ?
 
 const HOCKEY_CARDS_CATEGORY = "261328"; // Sports Trading Card Singles
 const EBAY_MARKETPLACE = "EBAY_US"; // US marketplace has most hockey cards
+
+const MAX_QUERY_LENGTH = 100;
+const DEFAULT_LIMIT = 50;
+const MIN_RESULTS_TARGET = 8;
+const MAX_QUERY_ATTEMPTS = 3;
+const AUCTION_FLOOR_HOURS = 48;
+
+const STOP_WORDS = new Set([
+  "nhl",
+  "hockey",
+  "card",
+  "cards",
+  "trading",
+  "sports",
+  "the",
+  "a",
+  "an",
+  "and",
+  "of",
+  "for",
+  "to",
+  "in",
+  "set",
+]);
+
+const PHRASE_KEYWORDS = [
+  "young guns",
+  "upper deck",
+  "o-pee-chee",
+  "opc",
+  "sp authentic",
+  "spa",
+  "the cup",
+  "stature",
+  "artifacts",
+  "trilogy",
+  "premier",
+  "credentials",
+  "ice",
+  "series 1",
+  "series 2",
+  "chronology",
+  "allure",
+  "clear cut",
+  "tim hortons",
+  "metal universe",
+  "future watch",
+  "canvas",
+  "star rookie",
+];
+
+const GRADE_TOKENS = ["psa", "bgs", "sgc", "cgc"];
 
 // Token cache (in-memory for function lifetime)
 let cachedToken = null;
@@ -69,7 +122,7 @@ async function getEbayToken() {
     cachedToken = data.access_token;
     tokenExpiry = Date.now() + (data.expires_in * 1000);
 
-    console.log(`✅ New eBay token acquired (valid for ${data.expires_in / 3600} hours)`);
+    console.log(`New eBay token acquired (valid for ${data.expires_in / 3600} hours)`);
     return cachedToken;
   } catch (error) {
     console.error("eBay token fetch error:", error);
@@ -77,165 +130,503 @@ async function getEbayToken() {
   }
 }
 
-/**
- * Search eBay for ACTIVE listings
- * Note: Browse API returns active (asking) prices, not sold prices.
- * The calculateEstimatedPrice() function compensates with discount factors.
- * @param {string} query - Search term
- * @return {Promise<Array>} Array of active listing results
- */
-async function searchEbayCard(query, fxRates = null) {
-  const token = await getEbayToken();
+function normalizeText(value) {
+  if (!value) return "";
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/["'`]/g, "")
+    .replace(/[_]/g, " ")
+    .replace(/[^a-z0-9\s\/#-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  // Calculate date 90 days ago (only recent sold items)
+function tokenize(value) {
+  return value
+    .replace(/[#/.-]/g, " ")
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function extractSignals(cardName) {
+  const normalized = normalizeText(cardName);
+  const yearRangeMatch = normalized.match(/\b(19|20)\d{2}\s*[-/]\s*\d{2}\b/);
+  const yearMatch = normalized.match(/\b(19|20)\d{2}\b/);
+  const cardNumberMatch = normalized.match(/#\s*(\d{1,4})\b/) || normalized.match(/\bno\.?\s*(\d{1,4})\b/);
+  const serialMatch = normalized.match(/\/\s*(\d{2,4})\b/);
+  const gradeMatch = normalized.match(/\b(psa|bgs|sgc|cgc)\s*(10|9\.5|9|8\.5|8|7|6|5)\b/);
+
+  const phrases = PHRASE_KEYWORDS.filter((phrase) => normalized.includes(phrase));
+  const rawTokens = tokenize(normalized);
+  const filteredTokens = rawTokens.filter((token) => !STOP_WORDS.has(token));
+  const playerTokens = filteredTokens
+    .filter((token) => !/^\d+$/.test(token) && !GRADE_TOKENS.includes(token))
+    .slice(0, 2);
+
+  const yearRange = yearRangeMatch ? yearRangeMatch[0].replace(/\s+/g, "") : null;
+  const year = yearMatch ? yearMatch[0] : null;
+  const cardNumber = cardNumberMatch ? cardNumberMatch[1] : null;
+  const serial = serialMatch ? serialMatch[1] : null;
+  const grade = gradeMatch ? `${gradeMatch[1]} ${gradeMatch[2]}` : null;
+
+  const keyTokens = filteredTokens.filter((token) => {
+    if (playerTokens.includes(token)) return false;
+    if (token === year || token === cardNumber || token === serial) return false;
+    if (GRADE_TOKENS.includes(token)) return false;
+    return true;
+  });
+
+  return {
+    normalized,
+    playerTokens,
+    keyTokens,
+    year,
+    yearRange,
+    cardNumber,
+    serial,
+    grade,
+    phrases,
+  };
+}
+
+function buildQueryString(parts) {
+  const seen = new Set();
+  const unique = [];
+
+  parts.forEach((part) => {
+    if (!part) return;
+    const token = String(part).trim();
+    if (!token || seen.has(token)) return;
+    seen.add(token);
+    unique.push(token);
+  });
+
+  let query = unique.join(" ").replace(/\s+/g, " ").trim();
+
+  if (query.length > MAX_QUERY_LENGTH) {
+    const tokens = query.split(" ");
+    while (tokens.length > 1 && tokens.join(" ").length > MAX_QUERY_LENGTH) {
+      tokens.pop();
+    }
+    query = tokens.join(" ");
+  }
+
+  return query;
+}
+
+function buildSearchQueries(signals) {
+  const yearToken = signals.yearRange || signals.year || null;
+  const phraseTokens = signals.phrases || [];
+  const gradeTokens = signals.grade ? signals.grade.split(" ") : [];
+  const strict = buildQueryString([
+    ...signals.playerTokens,
+    yearToken,
+    ...phraseTokens,
+    signals.cardNumber,
+    ...gradeTokens,
+  ]);
+  const balanced = buildQueryString([
+    ...signals.playerTokens,
+    yearToken,
+    ...phraseTokens,
+    "card",
+  ]);
+  const loose = buildQueryString([
+    ...signals.playerTokens,
+    ...phraseTokens,
+    "card",
+  ]);
+
+  const queries = [strict, balanced, loose]
+    .filter((query) => query)
+    .filter((query, index, all) => all.indexOf(query) === index)
+    .slice(0, MAX_QUERY_ATTEMPTS);
+
+  if (!queries.length && signals.normalized) {
+    return [signals.normalized.slice(0, MAX_QUERY_LENGTH)];
+  }
+
+  return queries;
+}
+
+function convertToEur(amount, currency, fxRates) {
+  const value = parseFloat(amount);
+  if (!Number.isFinite(value)) return null;
+  if (!currency || currency === "EUR") return value;
+  const rate = fxRates && typeof fxRates[currency] === "number" ? fxRates[currency] : null;
+  if (!rate || rate <= 0) return value;
+  return value / rate;
+}
+
+function mapItemSummary(item, fxRates) {
+  if (!item) return null;
+  const buyingOptions = Array.isArray(item.buyingOptions) ? item.buyingOptions : [];
+  const isAuctionOnly = buyingOptions.includes("AUCTION") && !buyingOptions.includes("FIXED_PRICE");
+  const priceInfo = isAuctionOnly && item.currentBidPrice ? item.currentBidPrice : item.price;
+
+  if (!priceInfo || !priceInfo.value) return null;
+
+  const priceEur = convertToEur(priceInfo.value, priceInfo.currency, fxRates);
+  if (!Number.isFinite(priceEur) || priceEur <= 0) return null;
+
+  return {
+    id: item.itemId || null,
+    title: item.title || "",
+    price: parseFloat(priceEur.toFixed(2)),
+    currency: "EUR",
+    buyingOptions,
+    isAuctionOnly,
+    bidCount: typeof item.bidCount === "number" ? item.bidCount : 0,
+    endDate: item.itemEndDate || null,
+  };
+}
+
+function mergeUniqueResults(existing, incoming) {
+  const merged = [...existing];
+  const seen = new Set(existing.map((item) => item.id || `${item.title}-${item.price}`));
+
+  incoming.forEach((item) => {
+    const key = item.id || `${item.title}-${item.price}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(item);
+    }
+  });
+
+  return merged;
+}
+
+function computeMatchScore(title, signals) {
+  if (!title) return 0;
+  const normalizedTitle = normalizeText(title);
+  const titleTokens = new Set(tokenize(normalizedTitle));
+
+  let score = 0;
+  let maxScore = 0;
+
+  const addScore = (weight, condition) => {
+    maxScore += weight;
+    if (condition) score += weight;
+  };
+
+  signals.playerTokens.forEach((token) => addScore(4, titleTokens.has(token)));
+
+  if (signals.year) {
+    addScore(3, titleTokens.has(signals.year));
+  }
+
+  if (signals.yearRange) {
+    const yearRangeNormalized = signals.yearRange.replace("/", "-");
+    addScore(3, normalizedTitle.includes(signals.yearRange) || normalizedTitle.includes(yearRangeNormalized));
+  }
+
+  signals.phrases.forEach((phrase) => addScore(3, normalizedTitle.includes(phrase)));
+
+  if (signals.cardNumber) {
+    addScore(2, titleTokens.has(signals.cardNumber));
+  }
+
+  if (signals.grade) {
+    addScore(2, normalizedTitle.includes(signals.grade));
+  }
+
+  signals.keyTokens.forEach((token) => addScore(1, titleTokens.has(token)));
+
+  return maxScore > 0 ? score / maxScore : 0;
+}
+
+function filterRelevantResults(results, signals, mode) {
+  const scored = results.map((item) => {
+    const matchScore = computeMatchScore(item.title, signals);
+    return {...item, matchScore};
+  });
+
+  const baseThreshold = mode === "image" ? 0.2 : 0.35;
+  const fallbackThreshold = mode === "image" ? 0.15 : 0.25;
+
+  let filtered = scored.filter((item) => item.matchScore >= baseThreshold);
+  if (filtered.length < 5) {
+    filtered = scored.filter((item) => item.matchScore >= fallbackThreshold);
+  }
+
+  if (!filtered.length) {
+    filtered = scored;
+  }
+
+  return filtered
+    .sort((a, b) => b.matchScore - a.matchScore || a.price - b.price)
+    .slice(0, 80);
+}
+
+async function searchEbayTextOnce(query, fxRates) {
+  const token = await getEbayToken();
+  await globalLimiter.throttle();
+
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
   const dateFilter = ninetyDaysAgo.toISOString();
 
-  // Build search URL for ACTIVE listings
-  // eBay Browse API Best Practices:
-  // 1. Use broader search terms (remove overly specific details)
-  // 2. Get multiple results for better price averaging
-  // 3. Use fieldgroups=EXTENDED for more details
-  // 4. Filter by recent listings only (last 90 days)
   const params = new URLSearchParams({
     q: query,
-    // Remove category filter - might be too restrictive
-    // category_ids: HOCKEY_CARDS_CATEGORY,
-    limit: "50", // Get more results for better average (max 200)
-    fieldgroups: "EXTENDED", // Get soldDate and more details
-    // Only filter by date range - no buyingOptions filter for sold items
-    filter: `itemEndDate:[${dateFilter}..]`,
-    sort: "price", // From cheapest
+    limit: String(DEFAULT_LIMIT),
+    fieldgroups: "EXTENDED",
+    filter: `buyingOptions:{AUCTION|FIXED_PRICE},itemEndDate:[${dateFilter}..]`,
+    sort: "price",
   });
 
-  try {
-    const response = await fetch(
-        `${BROWSE_BASE}/buy/browse/v1/item_summary/search?${params}`,
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "X-EBAY-C-MARKETPLACE-ID": EBAY_MARKETPLACE, // EUR marketplace
-            "Content-Type": "application/json",
-          },
-        },
-    );
+  const response = await fetch(
+    `${BROWSE_BASE}/buy/browse/v1/item_summary/search?${params}`,
+    {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "X-EBAY-C-MARKETPLACE-ID": EBAY_MARKETPLACE,
+        "Content-Type": "application/json",
+      },
+    },
+  );
 
-    if (!response.ok) {
-      // Token expired
-      if (response.status === 401) {
-        cachedToken = null;
-        tokenExpiry = null;
-        throw new Error("Token expired");
-      }
-
-      // Rate limit
-      if (response.status === 429) {
-        throw new Error("Rate limit exceeded");
-      }
-
-      throw new Error(`eBay API error: ${response.status}`);
+  if (!response.ok) {
+    if (response.status === 401) {
+      cachedToken = null;
+      tokenExpiry = null;
+      throw new Error("Token expired");
     }
 
-    const data = await response.json();
-
-    if (!data.itemSummaries || data.itemSummaries.length === 0) {
-      console.log(`No eBay results for: ${query}`);
-      return [];
+    if (response.status === 429) {
+      throw new Error("Rate limit exceeded");
     }
 
-    // Parse ACTIVE listings results - only store essential data
-    const usdRate = fxRates && typeof fxRates.USD === "number" ? fxRates.USD : null;
-    const USD_TO_EUR = usdRate ? 1 / usdRate : 0.92; // Fallback approximate conversion rate
-    return data.itemSummaries
-        .filter((item) => item.price && item.price.value > 0) // Only valid prices
-        .map((item) => {
-          let priceInEur = parseFloat(item.price.value);
-          const currency = item.price.currency;
-
-          // Convert USD to EUR
-          if (currency === "USD") {
-            priceInEur = priceInEur * USD_TO_EUR;
-          }
-
-          // Only store price and soldDate - minimize data
-          return {
-            price: priceInEur,
-            soldDate: item.itemEndDate || null, // null if missing, don't use default
-          };
-        });
-  } catch (error) {
-    console.error("eBay search error:", error);
-    throw error;
+    throw new Error(`eBay API error: ${response.status}`);
   }
+
+  const data = await response.json();
+  if (!data.itemSummaries || data.itemSummaries.length === 0) {
+    return [];
+  }
+
+  return data.itemSummaries
+    .map((item) => mapItemSummary(item, fxRates))
+    .filter(Boolean);
+}
+
+async function fetchImageBase64(imageUrl) {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Image fetch failed: ${response.status}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer).toString("base64");
+}
+
+/**
+ * Search eBay for ACTIVE listings based on text
+ * @param {string} cardName - Original card name
+ * @param {Object|null} fxRates - FX rates (EUR base)
+ * @return {Promise<Array>} Array of listing results
+ */
+async function searchEbayCard(cardName, fxRates = null) {
+  if (!cardName) return [];
+
+  const signals = extractSignals(cardName);
+  const queries = buildSearchQueries(signals);
+
+  let aggregated = [];
+
+  for (const query of queries) {
+    if (!query) continue;
+    console.log(`eBay text search query: "${query}"`);
+    const results = await searchEbayTextOnce(query, fxRates);
+    aggregated = mergeUniqueResults(aggregated, results);
+    if (aggregated.length >= MIN_RESULTS_TARGET) break;
+  }
+
+  if (!aggregated.length) {
+    console.log(`No eBay results for: ${cardName}`);
+    return [];
+  }
+
+  return filterRelevantResults(aggregated, signals, "text");
+}
+
+/**
+ * Search eBay for ACTIVE listings based on image
+ * @param {string} imageUrl - Public image URL
+ * @param {string} cardName - Original card name (for relevance scoring)
+ * @param {Object|null} fxRates - FX rates (EUR base)
+ * @return {Promise<Array>} Array of listing results
+ */
+async function searchEbayCardByImage(imageUrl, cardName, fxRates = null) {
+  if (!imageUrl) return [];
+
+  const token = await getEbayToken();
+  await globalLimiter.throttle();
+
+  const imageBase64 = await fetchImageBase64(imageUrl);
+
+  const params = new URLSearchParams({
+    limit: String(DEFAULT_LIMIT),
+    filter: "buyingOptions:{AUCTION|FIXED_PRICE}",
+  });
+
+  const response = await fetch(
+    `${BROWSE_BASE}/buy/browse/v1/item_summary/search_by_image?${params}`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "X-EBAY-C-MARKETPLACE-ID": EBAY_MARKETPLACE,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({image: imageBase64}),
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      cachedToken = null;
+      tokenExpiry = null;
+      throw new Error("Token expired");
+    }
+
+    if (response.status === 429) {
+      throw new Error("Rate limit exceeded");
+    }
+
+    throw new Error(`eBay image API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.itemSummaries || data.itemSummaries.length === 0) {
+    return [];
+  }
+
+  const signals = cardName ? extractSignals(cardName) : null;
+  const mapped = data.itemSummaries
+    .map((item) => mapItemSummary(item, fxRates))
+    .filter(Boolean);
+
+  if (!signals) {
+    return mapped;
+  }
+
+  return filterRelevantResults(mapped, signals, "image");
+}
+
+function percentile(sorted, percentileValue) {
+  if (!sorted.length) return null;
+  const index = (sorted.length - 1) * percentileValue;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+}
+
+function getBaseDiscount(count) {
+  if (count <= 2) return 0.45;
+  if (count <= 4) return 0.35;
+  if (count <= 7) return 0.30;
+  if (count <= 12) return 0.25;
+  if (count <= 20) return 0.20;
+  return 0.15;
+}
+
+function getAuctionFloor(results) {
+  const now = Date.now();
+  const cutoff = AUCTION_FLOOR_HOURS * 60 * 60 * 1000;
+
+  const auctionPrices = results
+    .filter((item) => item.isAuctionOnly)
+    .filter((item) => item.bidCount > 0)
+    .filter((item) => {
+      if (!item.endDate) return false;
+      const endTime = new Date(item.endDate).getTime();
+      const remaining = endTime - now;
+      return remaining > 0 && remaining <= cutoff;
+    })
+    .map((item) => item.price)
+    .filter((price) => Number.isFinite(price))
+    .sort((a, b) => a - b);
+
+  if (!auctionPrices.length) {
+    return null;
+  }
+
+  return percentile(auctionPrices, 0.5);
 }
 
 /**
  * Calculate realistic market price from ACTIVE listings
- *
- * Browse API returns active (asking) prices, not sold prices.
- * This algorithm compensates by:
- * 1. Removing outliers (top/bottom 15%)
- * 2. Calculating trimmed average
- * 3. Applying discount factor based on market competition
- *
- * Discount logic:
- * - More listings = higher competition = buyers can negotiate more
- * - Fewer listings = rare card = less negotiating power
- *
- * @param {Array} results - Results from searchEbayCard (active listings)
+ * Uses dynamic discount based on data volume and price dispersion.
+ * Auction listings only contribute to a conservative floor value.
+ * @param {Array} results - Results from searchEbayCard or searchEbayCardByImage
  * @return {number|null} Estimated realistic price in EUR
  */
 function calculateEstimatedPrice(results) {
   if (!results || results.length === 0) return null;
 
-  // 1. Get prices and sort ascending
-  const prices = results.map((r) => r.price).sort((a, b) => a - b);
+  const fixedResults = results.filter((item) => !item.isAuctionOnly);
+  const auctionFloor = getAuctionFloor(results);
 
-  // 2. Remove outliers (top 15% and bottom 15%)
-  const trimPercent = 0.15;
+  const baseResults = fixedResults.length ? fixedResults : results;
+  const prices = baseResults
+    .map((item) => item.price)
+    .filter((price) => Number.isFinite(price))
+    .sort((a, b) => a - b);
+
+  if (!prices.length) return null;
+
+  const trimPercent = prices.length >= 8 ? 0.15 : prices.length >= 5 ? 0.1 : 0;
   const trimCount = Math.floor(prices.length * trimPercent);
-  const trimmedPrices = trimCount > 0 ?
-    prices.slice(trimCount, prices.length - trimCount) :
-    prices;
+  const trimmedPrices = trimCount > 0 ? prices.slice(trimCount, prices.length - trimCount) : prices;
 
-  // 3. Calculate average
-  let average;
-  if (trimmedPrices.length === 0) {
-    // Fallback to median if not enough data after trimming
-    average = prices[Math.floor(prices.length / 2)];
-  } else {
-    average = trimmedPrices.reduce((sum, p) => sum + p, 0) / trimmedPrices.length;
+  const median = percentile(prices, 0.5);
+  const baseAverage = trimmedPrices.length
+    ? trimmedPrices.reduce((sum, price) => sum + price, 0) / trimmedPrices.length
+    : median;
+
+  const q1 = percentile(prices, 0.25);
+  const q3 = percentile(prices, 0.75);
+  const spreadRatio = median && q1 != null && q3 != null ? (q3 - q1) / median : 0;
+
+  let discountPct = getBaseDiscount(prices.length);
+
+  if (spreadRatio < 0.08) {
+    discountPct -= 0.03;
+  } else if (spreadRatio < 0.12) {
+    discountPct -= 0.02;
+  } else if (spreadRatio > 0.6) {
+    discountPct += 0.05;
+  } else if (spreadRatio > 0.45) {
+    discountPct += 0.03;
   }
 
-  // 4. Apply discount factor based on market competition
-  // More results = more competition = higher discount
-  let discountFactor;
-  let competitionLevel;
-
-  if (results.length >= 20) {
-    discountFactor = 0.65; // -35% (high competition)
-    competitionLevel = "vysoká";
-  } else if (results.length >= 10) {
-    discountFactor = 0.70; // -30% (medium competition)
-    competitionLevel = "stredná";
-  } else if (results.length >= 5) {
-    discountFactor = 0.75; // -25% (low competition)
-    competitionLevel = "nízka";
-  } else {
-    discountFactor = 0.80; // -20% (rare card)
-    competitionLevel = "vzácna karta";
+  const matchScores = results.map((item) => item.matchScore).filter((score) => typeof score === "number");
+  if (matchScores.length) {
+    const avgMatch = matchScores.reduce((sum, score) => sum + score, 0) / matchScores.length;
+    if (avgMatch < 0.3) {
+      discountPct += 0.05;
+    } else if (avgMatch < 0.4) {
+      discountPct += 0.03;
+    } else if (avgMatch > 0.7) {
+      discountPct -= 0.02;
+    }
   }
 
-  // 5. Calculate final realistic price
-  const realisticPrice = average * discountFactor;
-  const discountPercent = Math.round((1 - discountFactor) * 100);
+  discountPct = Math.min(Math.max(discountPct, 0.1), 0.55);
 
-  console.log(`  📊 eBay: ${results.length} aktívnych inzerátov, konkurencia: ${competitionLevel}`);
-  console.log(`  💰 Priemer: €${average.toFixed(2)} → Realistická cena: €${realisticPrice.toFixed(2)} (-${discountPercent}%)`);
-  console.log(`  📈 Cenové rozpätie: €${prices[0].toFixed(2)} - €${prices[prices.length - 1].toFixed(2)}`);
+  const discountedPrice = baseAverage * (1 - discountPct);
+  const finalPrice = auctionFloor ? Math.max(discountedPrice, auctionFloor) : discountedPrice;
 
-  return parseFloat(realisticPrice.toFixed(2));
+  console.log(`eBay pricing: ${prices.length} listings, discount ${(discountPct * 100).toFixed(0)}%`);
+  if (auctionFloor) {
+    console.log(`Auction floor applied: €${auctionFloor.toFixed(2)}`);
+  }
+
+  return parseFloat(finalPrice.toFixed(2));
 }
 
 /**
@@ -244,37 +635,14 @@ function calculateEstimatedPrice(results) {
  * @return {string} Enhanced query
  */
 function enhanceQuery(cardName) {
-  let enhanced = cardName
-      .toLowerCase()
-      .trim();
-
-  // Remove common noise words
-  enhanced = enhanced.replace(/^nhl\s+/i, "");
-
-  // Remove very specific details that might limit results
-  // Keep player name, year, brand, but remove numbered variants
-  enhanced = enhanced.replace(/\/\d+$/i, ""); // Remove "/50" at end
-  enhanced = enhanced.replace(/\s+#\d+$/i, ""); // Remove "#123" at end
-
-  // Simplify some brand variations
-  enhanced = enhanced.replace(/\bmetal universe\b/i, "metal");
-  enhanced = enhanced.replace(/\bcache gold\b/i, "");
-
-  // Add "card" if missing (more generic for all collectibles)
-  if (!enhanced.includes("card") && !enhanced.includes("pokemon") && !enhanced.includes("coin")) {
-    enhanced += " card";
-  }
-
-  // Clean up extra spaces
-  enhanced = enhanced.replace(/\s+/g, " ").trim();
-
-  console.log(`  🔍 Query transformation: "${cardName}" → "${enhanced}"`);
-
-  return enhanced;
+  const signals = extractSignals(cardName);
+  const queries = buildSearchQueries(signals);
+  return queries[0] || cardName;
 }
 
 module.exports = {
   searchEbayCard,
+  searchEbayCardByImage,
   calculateEstimatedPrice,
   enhanceQuery,
 };

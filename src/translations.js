@@ -194,6 +194,11 @@ export const translations = {
     'profile.save': 'Uložiť',
     'profile.saving': 'Ukladám...',
     'profile.error.empty': 'Meno nemôže byť prázdne',
+    'profile.pricingMode': 'Spôsob aktualizácie cien',
+    'profile.pricingMode.hint': 'Vyber, či sa ceny majú počítať podľa názvu alebo podľa fotky karty.',
+    'profile.pricingMode.text': 'Text (názov karty)',
+    'profile.pricingMode.image': 'Foto (obrázok karty)',
+    'profile.pricingMode.note': 'V režime Foto sa položky bez fotky preskočia.',
 
     // Common
     'common.loading': 'Načítavam...',
@@ -483,6 +488,11 @@ export const translations = {
     'profile.save': 'Save',
     'profile.saving': 'Saving...',
     'profile.error.empty': 'Name cannot be empty',
+    'profile.pricingMode': 'Pricing mode',
+    'profile.pricingMode.hint': 'Choose whether prices should be calculated from the card name or the card photo.',
+    'profile.pricingMode.text': 'Text (card name)',
+    'profile.pricingMode.image': 'Image (card photo)',
+    'profile.pricingMode.note': 'In image mode, items without a photo are skipped.',
 
     // Common
     'common.loading': 'Loading...',
@@ -772,6 +782,11 @@ export const translations = {
     'profile.save': 'Uložit',
     'profile.saving': 'Ukládám...',
     'profile.error.empty': 'Jméno nemůže být prázdné',
+    'profile.pricingMode': 'Způsob aktualizace cen',
+    'profile.pricingMode.hint': 'Vyber, zda se ceny mají počítat podle názvu nebo podle fotky karty.',
+    'profile.pricingMode.text': 'Text (název karty)',
+    'profile.pricingMode.image': 'Foto (obrázek karty)',
+    'profile.pricingMode.note': 'V režimu Foto se položky bez fotky přeskočí.',
 
     // Common
     'common.loading': 'Načítám...',

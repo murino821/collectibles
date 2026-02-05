@@ -13,7 +13,7 @@ const fetch = require("node-fetch");
 admin.initializeApp();
 
 const db = admin.firestore();
-const {searchEbayCard, calculateEstimatedPrice, enhanceQuery} = require("./ebayAPI");
+const {searchEbayCard, searchEbayCardByImage, calculateEstimatedPrice} = require("./ebayAPI");
 const {globalLimiter} = require("./rateLimiter");
 
 const ECB_BASE_URL =
@@ -78,6 +78,11 @@ async function updateUserCollection(userId) {
   console.log(`🔄 Starting collection update for user: ${userId}`);
 
   const fxRates = await getLatestExchangeRates();
+  const userSnap = await db.collection("users").doc(userId).get();
+  const userData = userSnap.exists ? userSnap.data() : {};
+  const pricingMode = userData?.pricingMode || "text";
+  const usingImageMode = pricingMode === "image";
+  console.log(`🧭 Pricing mode for user ${userId}: ${pricingMode}`);
 
   // Get all user's cards
   const cardsSnapshot = await db.collection("cards")
@@ -140,15 +145,27 @@ async function updateUserCollection(userId) {
       const cardId = cardDoc.id;
 
       try {
-        // Rate limiting
-        await globalLimiter.throttle();
+        let results = [];
+        if (usingImageMode) {
+          const imageUrl = typeof card.imageUrl === "string" ? card.imageUrl.trim() : "";
+          if (!imageUrl || !/^https?:\\/\\//i.test(imageUrl)) {
+            console.log(`  ⚠ ${card.item}: Missing image for image-based pricing`);
+            failCount++;
+            errors.push({cardId, cardName: card.item, error: "Missing image for image-based pricing"});
+            await statusRef.update({
+              successCount,
+              failCount,
+              progress: successCount + failCount,
+            }).catch(() => { /* Ignore if status doc doesn't exist */ });
+            continue;
+          }
 
-        // Enhance query
-        const query = enhanceQuery(card.item);
-        console.log(`🔍 Searching: ${query}`);
-
-        // Search eBay
-        const results = await searchEbayCard(query, fxRates);
+          console.log(`🖼️  Image search: ${card.item}`);
+          results = await searchEbayCardByImage(imageUrl, card.item, fxRates);
+        } else {
+          console.log(`🔍 Text search: ${card.item}`);
+          results = await searchEbayCard(card.item, fxRates);
+        }
 
         if (results.length > 0) {
           const estimatedPrice = calculateEstimatedPrice(results);
@@ -167,6 +184,7 @@ async function updateUserCollection(userId) {
               lastPriceUpdate: admin.firestore.FieldValue.serverTimestamp(),
               priceSource: "ebay",
               ebayPriceSource: true, // Flag for UI to show eBay badge
+              ebaySearchMode: pricingMode,
               priceHistory: admin.firestore.FieldValue.arrayUnion(priceHistoryEntry),
             });
 
@@ -422,6 +440,7 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
 
       // Currency preferences
       currency: "EUR",
+      pricingMode: "text",
 
       // Timestamps
       createdAt: admin.firestore.FieldValue.serverTimestamp(),

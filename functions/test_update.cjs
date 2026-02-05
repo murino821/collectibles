@@ -25,7 +25,7 @@ require.cache[require.resolve('firebase-functions')] = {
   id: require.resolve('firebase-functions')
 };
 
-const {searchEbayCard, calculateEstimatedPrice, enhanceQuery} = require('./ebayAPI');
+const {searchEbayCard, calculateEstimatedPrice} = require('./ebayAPI');
 
 async function testUpdate() {
   try {
@@ -61,10 +61,9 @@ async function testUpdate() {
       console.log(`🔄 Updating: ${card.item}`);
       
       try {
-        const query = enhanceQuery(card.item);
-        console.log(`   Query: "${query}"`);
+        console.log(`   Query: "${card.item}"`);
         
-        const results = await searchEbayCard(query);
+        const results = await searchEbayCard(card.item);
         
         if (results.length > 0) {
           const price = calculateEstimatedPrice(results);

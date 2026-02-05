@@ -31,8 +31,7 @@ Object.assign(functionsModule, {
   config: global.functions.config
 });
 
-const {searchEbayCard, calculateEstimatedPrice, enhanceQuery} = require('./ebayAPI');
-const {globalLimiter} = require('./rateLimiter');
+const {searchEbayCard, calculateEstimatedPrice} = require('./ebayAPI');
 
 async function manualUpdate(userId) {
   console.log(`🔄 Starting manual collection update for user: ${userId}`);
@@ -65,15 +64,10 @@ async function manualUpdate(userId) {
       console.log(`\n[${i + 1}/${cards.length}] Processing: ${card.item}`);
 
       try {
-        // Rate limiting
-        await globalLimiter.throttle();
-
-        // Enhance query
-        const query = enhanceQuery(card.item);
-        console.log(`  🔍 Searching eBay: "${query}"`);
+        console.log(`  🔍 Searching eBay: "${card.item}"`);
 
         // Search eBay
-        const results = await searchEbayCard(query);
+        const results = await searchEbayCard(card.item);
 
         if (results.length > 0) {
           const estimatedPrice = calculateEstimatedPrice(results);

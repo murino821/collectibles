@@ -117,7 +117,7 @@ function CardManager({ user }) {
   const [imageModalUrl, setImageModalUrl] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteCard, setDeleteCard] = useState(null);
-  const [userProfile, setUserProfile] = useState({ displayName: user.displayName, photoURL: user.photoURL });
+  const [userProfile, setUserProfile] = useState({ displayName: user.displayName, photoURL: user.photoURL, pricingMode: 'text' });
   const [userRole, setUserRole] = useState('standard');
   const isTestHost = typeof window !== 'undefined' && window.location.hostname.includes('your-card-collection-2026-test');
   const isAllowlistedAdmin = isTestHost && ['miroslav.svajda@gmail.com'].includes(user?.email || '');
@@ -208,6 +208,7 @@ function CardManager({ user }) {
           email: user.email,
           displayName: user.displayName || user.email?.split('@')[0] || 'Anonym',
           photoURL: user.photoURL || null,
+          pricingMode: 'text',
           createdAt: new Date(),
           updatedAt: new Date()
         });
@@ -224,7 +225,8 @@ function CardManager({ user }) {
         setUserRole(isAllowlistedAdmin ? 'admin' : (userData.role || 'standard'));
         setUserProfile({
           displayName: userData.displayName || user.displayName || user.email?.split('@')[0] || 'Profil',
-          photoURL: userData.photoURL || user.photoURL || null
+          photoURL: userData.photoURL || user.photoURL || null,
+          pricingMode: userData.pricingMode || 'text'
         });
       }
     });
@@ -1475,7 +1477,7 @@ function CardManager({ user }) {
 
       {showProfileEditor && (
         <ProfileEditor
-          user={{ ...user, displayName: userProfile.displayName, photoURL: userProfile.photoURL }}
+          user={{ ...user, displayName: userProfile.displayName, photoURL: userProfile.photoURL, pricingMode: userProfile.pricingMode }}
           isOpen={showProfileEditor}
           isMockAuth={isMockAuth}
           onClose={() => setShowProfileEditor(false)}

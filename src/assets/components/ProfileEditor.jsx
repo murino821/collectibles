@@ -9,7 +9,6 @@ import { t, getCurrentLanguage } from '../../translations';
 function ProfileEditor({ user, isOpen, onClose, onUpdate, isMockAuth = false }) {
   const [displayName, setDisplayName] = useState(user.displayName || '');
   const [photoURL, setPhotoURL] = useState(user.photoURL || '');
-  const [pricingMode, setPricingMode] = useState(user.pricingMode || 'text');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const lang = getCurrentLanguage();
@@ -42,7 +41,7 @@ function ProfileEditor({ user, isOpen, onClose, onUpdate, isMockAuth = false }) 
     }
 
     if (isMockAuth) {
-      onUpdate({ displayName: displayName.trim(), photoURL: photoURL.trim(), pricingMode });
+      onUpdate({ displayName: displayName.trim(), photoURL: photoURL.trim() });
       onClose();
       return;
     }
@@ -57,13 +56,12 @@ function ProfileEditor({ user, isOpen, onClose, onUpdate, isMockAuth = false }) 
         displayName: displayName.trim(),
         photoURL: trimmedPhoto || null,
         email: user.email,
-        pricingMode,
         updatedAt: new Date(),
         createdAt: new Date() // Will only be set on first create
       }, { merge: true });
 
       console.log('Profile saved successfully');
-      onUpdate({ displayName: displayName.trim(), photoURL: trimmedPhoto, pricingMode });
+      onUpdate({ displayName: displayName.trim(), photoURL: trimmedPhoto });
       onClose();
     } catch (err) {
       console.error('Error saving profile:', err);
@@ -115,41 +113,6 @@ function ProfileEditor({ user, isOpen, onClose, onUpdate, isMockAuth = false }) 
             <div style={styles.hint}>
               {t('profile.photo.hint', lang)}
             </div>
-          </div>
-
-          {/* Pricing Mode */}
-          <div style={styles.field}>
-            <label style={styles.label}>{t('profile.pricingMode', lang)}</label>
-            <div style={styles.segmented}>
-              <button
-                type="button"
-                onClick={() => setPricingMode('text')}
-                style={{
-                  ...styles.segmentButton,
-                  ...(pricingMode === 'text' ? styles.segmentActive : {})
-                }}
-              >
-                {t('profile.pricingMode.text', lang)}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPricingMode('image')}
-                style={{
-                  ...styles.segmentButton,
-                  ...(pricingMode === 'image' ? styles.segmentActive : {})
-                }}
-              >
-                {t('profile.pricingMode.image', lang)}
-              </button>
-            </div>
-            <div style={styles.hint}>
-              {t('profile.pricingMode.hint', lang)}
-            </div>
-            {pricingMode === 'image' && (
-              <div style={styles.note}>
-                {t('profile.pricingMode.note', lang)}
-              </div>
-            )}
           </div>
 
           {/* Preview */}
@@ -256,31 +219,6 @@ const styles = {
   field: {
     marginBottom: '20px'
   },
-  segmented: {
-    display: 'flex',
-    gap: '8px',
-    background: '#f1f5f9',
-    padding: '6px',
-    borderRadius: '12px',
-    border: '1px solid #e2e8f0'
-  },
-  segmentButton: {
-    flex: 1,
-    border: 'none',
-    background: 'transparent',
-    padding: '10px 12px',
-    borderRadius: '10px',
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#475569',
-    cursor: 'pointer',
-    transition: 'all 0.2s'
-  },
-  segmentActive: {
-    background: '#0f172a',
-    color: '#f8fafc',
-    boxShadow: '0 6px 16px rgba(15, 23, 42, 0.2)'
-  },
   label: {
     display: 'block',
     fontSize: '14px',
@@ -302,12 +240,6 @@ const styles = {
     fontSize: '12px',
     color: '#64748b',
     marginTop: '6px'
-  },
-  note: {
-    fontSize: '12px',
-    color: '#f97316',
-    marginTop: '8px',
-    fontWeight: '600'
   },
   preview: {
     marginTop: '24px',

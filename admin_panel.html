@@ -116,6 +116,25 @@
       color: #3730a3;
     }
 
+    .mode-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .mode-text {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .mode-image {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
     button {
       background: #3b82f6;
       color: white;
@@ -281,6 +300,7 @@
               <tr>
                 <th>Email</th>
                 <th>Rola</th>
+                <th>Ceny</th>
                 <th>Položky</th>
                 <th>Limit</th>
                 <th>Update interval</th>
@@ -291,7 +311,7 @@
             </thead>
             <tbody id="usersTableBody">
               <tr>
-                <td colspan="8" style="text-align: center; color: #94a3b8;">
+                <td colspan="9" style="text-align: center; color: #94a3b8;">
                   Načítavam používateľov...
                 </td>
               </tr>
@@ -355,6 +375,27 @@
     </div>
   </div>
 
+  <!-- Change Pricing Mode Modal -->
+  <div id="pricingModeModal" class="modal">
+    <div class="modal-content">
+      <h2>Zmeniť spôsob aktualizácie cien</h2>
+      <p style="margin-bottom: 20px; color: #64748b;" id="pricingModalUserEmail"></p>
+
+      <div class="form-group">
+        <label>Spôsob:</label>
+        <select id="pricingModeSelect">
+          <option value="text">Text (názov karty)</option>
+          <option value="image">Foto (obrázok karty)</option>
+        </select>
+      </div>
+
+      <div class="modal-actions">
+        <button onclick="closePricingModeModal()">Zrušiť</button>
+        <button onclick="confirmPricingModeChange()">Uložiť</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Edit Next Update Modal -->
   <div id="updateDateModal" class="modal">
     <div class="modal-content">
@@ -408,6 +449,7 @@
 
     let currentUser = null;
     let selectedUserId = null;
+    let selectedPricingUserId = null;
     const grantAdminBtn = document.getElementById('grantAdminBtn');
 
     if (isTest && grantAdminBtn) {
@@ -500,9 +542,12 @@
         users.forEach(user => {
           const tr = document.createElement('tr');
           const nextUpdate = user.nextUpdateDate ? new Date(user.nextUpdateDate).toLocaleString('sk-SK') : 'N/A';
+          const pricingMode = user.pricingMode || 'text';
+          const pricingLabel = pricingMode === 'image' ? 'FOTO' : 'TEXT';
           tr.innerHTML = `
             <td>${user.email || user.displayName || user.id}</td>
             <td><span class="role-badge role-${user.role}">${user.role}</span></td>
+            <td><span class="mode-badge mode-${pricingMode}">${pricingLabel}</span></td>
             <td><strong>${user.currentCardCount}</strong></td>
             <td>${user.cardLimit === 999999 ? '∞' : user.cardLimit}</td>
             <td>${user.updateIntervalDays} dní</td>
@@ -513,7 +558,8 @@
             <td>${user.createdAt ? new Date(user.createdAt).toLocaleDateString('sk-SK') : 'N/A'}</td>
             <td>
               <button onclick="triggerUpdateNow('${user.id}', '${user.email}')" style="background: #10b981; margin-bottom: 5px;">▶️ Spustiť update</button><br>
-              <button onclick="openRoleModal('${user.id}', '${user.email}', '${user.role}')">Zmeniť rolu</button>
+              <button onclick="openRoleModal('${user.id}', '${user.email}', '${user.role}')">Zmeniť rolu</button><br>
+              <button onclick="openPricingModeModal('${user.id}', '${user.email}', '${pricingMode}')" style="margin-top: 5px; background: #0ea5e9;">Zmeniť mód</button>
             </td>
           `;
           tbody.appendChild(tr);
@@ -563,6 +609,45 @@
         setTimeout(() => { status.innerHTML = ''; }, 3000);
       } catch (error) {
         console.error('Error updating role:', error);
+        status.className = 'status error';
+        status.innerHTML = `<strong>❌ Chyba:</strong> ${error.message}`;
+      }
+    };
+
+    window.openPricingModeModal = function(userId, email, currentMode) {
+      selectedPricingUserId = userId;
+      document.getElementById('pricingModalUserEmail').textContent = email;
+      document.getElementById('pricingModeSelect').value = currentMode || 'text';
+      document.getElementById('pricingModeModal').classList.add('active');
+    };
+
+    window.closePricingModeModal = function() {
+      document.getElementById('pricingModeModal').classList.remove('active');
+      selectedPricingUserId = null;
+    };
+
+    window.confirmPricingModeChange = async function() {
+      if (!selectedPricingUserId) return;
+
+      const newMode = document.getElementById('pricingModeSelect').value;
+      const status = document.getElementById('status');
+
+      status.className = 'status loading';
+      status.innerHTML = '<strong>⏳ Mením spôsob aktualizácie cien...</strong>';
+
+      try {
+        const updatePricingMode = httpsCallable(functions, 'updatePricingModeV2');
+        await updatePricingMode({ targetUserId: selectedPricingUserId, pricingMode: newMode });
+
+        status.className = 'status success';
+        status.innerHTML = `<strong>✅ Spôsob aktualizácie nastavený na ${newMode}</strong>`;
+
+        closePricingModeModal();
+        await loadUsers();
+
+        setTimeout(() => { status.innerHTML = ''; }, 3000);
+      } catch (error) {
+        console.error('Error updating pricing mode:', error);
         status.className = 'status error';
         status.innerHTML = `<strong>❌ Chyba:</strong> ${error.message}`;
       }

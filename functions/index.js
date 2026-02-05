@@ -798,6 +798,7 @@ exports.getAllUsersV2 = onCall(async (request) => {
         email: userData.email,
         displayName: userData.displayName,
         role: userData.role || "standard",
+        pricingMode: userData.pricingMode || "text",
         cardLimit: userData.cardLimit,
         currentCardCount: cardsSnapshot.size,
         priceUpdatesEnabled: userData.priceUpdatesEnabled,
@@ -867,6 +868,44 @@ exports.updateUserRoleV2 = onCall(async (request) => {
     };
   } catch (error) {
     console.error("Error updating user role:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+exports.updatePricingModeV2 = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User not logged in");
+  }
+
+  const adminId = request.auth.uid;
+  const adminDoc = await db.collection("users").doc(adminId).get();
+  if (!isAllowlistedAdmin(request) && (!adminDoc.exists || adminDoc.data().role !== "admin")) {
+    throw new HttpsError("permission-denied", "Only admins can update pricing mode");
+  }
+
+  const {targetUserId, pricingMode} = request.data || {};
+
+  if (!targetUserId || !pricingMode) {
+    throw new HttpsError("invalid-argument", "Missing targetUserId or pricingMode");
+  }
+
+  if (!["text", "image"].includes(pricingMode)) {
+    throw new HttpsError("invalid-argument", "Invalid pricingMode. Must be: text or image");
+  }
+
+  console.log(`🔧 updatePricingMode: ${adminId} changing ${targetUserId} to ${pricingMode}`);
+
+  try {
+    await db.collection("users").doc(targetUserId).update({
+      pricingMode,
+      pricingModeUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      pricingModeUpdatedBy: adminId,
+    });
+
+    console.log(`✅ User ${targetUserId} pricing mode updated to ${pricingMode}`);
+    return {success: true, pricingMode};
+  } catch (error) {
+    console.error("Error updating pricing mode:", error);
     throw new HttpsError("internal", error.message);
   }
 });

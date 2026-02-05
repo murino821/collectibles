@@ -57,6 +57,9 @@ const PHRASE_KEYWORDS = [
   "sp authentic",
   "spa",
   "the cup",
+  "sign of the times",
+  "sott",
+  "mvp",
   "stature",
   "artifacts",
   "trilogy",
@@ -76,6 +79,32 @@ const PHRASE_KEYWORDS = [
 ];
 
 const GRADE_TOKENS = ["psa", "bgs", "sgc", "cgc"];
+const STRONG_PHRASES = new Set([
+  "young guns",
+  "future watch",
+  "sign of the times",
+  "sott",
+  "the cup",
+  "beehive",
+  "mvp",
+]);
+const EXCLUDE_REGEXES = [
+  /\blot\b/,
+  /\blots\b/,
+  /\bu\s?pick\b/,
+  /\bpick (from|your)\b/,
+  /\b(you choose|choose from|your choice)\b/,
+  /\b(complete|team|base|master) set\b/,
+  /\b(hobby|blaster|mega)?\s*box\b/,
+  /\bcase\b/,
+  /\bpacks?\b/,
+  /\bsealed\b/,
+  /\bunopened\b/,
+  /\bempty\b/,
+  /\b(binder|album|page|sheet)\b/,
+  /\b(reprint|replica)\b/,
+  /\b(case break|box break|group break|breakers?)\b/,
+];
 
 // Token cache (in-memory for function lifetime)
 let cachedToken = null;
@@ -152,6 +181,64 @@ function tokenize(value) {
     .filter(Boolean);
 }
 
+const PHRASE_TOKENS = new Set(PHRASE_KEYWORDS.flatMap((phrase) => tokenize(phrase)));
+const EXTRA_PLAYER_STOP_WORDS = [
+  "auto",
+  "autograph",
+  "autographed",
+  "signature",
+  "signed",
+  "patch",
+  "jersey",
+  "rookie",
+  "rc",
+  "base",
+  "insert",
+  "parallel",
+  "limited",
+  "numbered",
+  "serial",
+  "short",
+  "print",
+  "sp",
+  "ssp",
+  "sott",
+  "mvp",
+  "cup",
+  "beehive",
+  "future",
+  "watch",
+  "young",
+  "guns",
+  "upper",
+  "deck",
+  "ud",
+  "opc",
+  "authentic",
+  "series",
+  "stature",
+  "artifacts",
+  "trilogy",
+  "premier",
+  "credentials",
+  "ice",
+  "chronology",
+  "allure",
+  "clear",
+  "cut",
+  "tim",
+  "hortons",
+  "metal",
+  "universe",
+  "canvas",
+  "rookies",
+];
+const PLAYER_STOP_WORDS = new Set([
+  ...STOP_WORDS,
+  ...PHRASE_TOKENS,
+  ...EXTRA_PLAYER_STOP_WORDS,
+]);
+
 function extractSignals(cardName) {
   const normalized = normalizeText(cardName);
   const yearRangeMatch = normalized.match(/\b(19|20)\d{2}\s*[-/]\s*\d{2}\b/);
@@ -163,9 +250,16 @@ function extractSignals(cardName) {
   const phrases = PHRASE_KEYWORDS.filter((phrase) => normalized.includes(phrase));
   const rawTokens = tokenize(normalized);
   const filteredTokens = rawTokens.filter((token) => !STOP_WORDS.has(token));
-  const playerTokens = filteredTokens
-    .filter((token) => !/^\d+$/.test(token) && !GRADE_TOKENS.includes(token))
-    .slice(0, 2);
+  const nonNumericTokens = filteredTokens
+    .filter((token) => !/^\d+$/.test(token) && !GRADE_TOKENS.includes(token));
+  const strongPlayerTokens = nonNumericTokens
+    .filter((token) => !PLAYER_STOP_WORDS.has(token));
+  let playerTokens = strongPlayerTokens.slice(0, 2);
+  const hasStrongPlayerTokens = playerTokens.length > 0;
+
+  if (!playerTokens.length) {
+    playerTokens = nonNumericTokens.slice(0, 1);
+  }
 
   const yearRange = yearRangeMatch ? yearRangeMatch[0].replace(/\s+/g, "") : null;
   const year = yearMatch ? yearMatch[0] : null;
@@ -183,6 +277,7 @@ function extractSignals(cardName) {
   return {
     normalized,
     playerTokens,
+    hasStrongPlayerTokens,
     keyTokens,
     year,
     yearRange,
@@ -197,6 +292,7 @@ function buildSignalsSummary(signals) {
   if (!signals) return null;
   return {
     playerTokens: signals.playerTokens || [],
+    hasStrongPlayerTokens: !!signals.hasStrongPlayerTokens,
     phrases: signals.phrases || [],
     year: signals.year || null,
     yearRange: signals.yearRange || null,
@@ -313,10 +409,8 @@ function mergeUniqueResults(existing, incoming) {
   return merged;
 }
 
-function computeMatchScore(title, signals) {
-  if (!title) return 0;
-  const normalizedTitle = normalizeText(title);
-  const titleTokens = new Set(tokenize(normalizedTitle));
+function computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals) {
+  if (!signals) return 0;
 
   let score = 0;
   let maxScore = 0;
@@ -343,6 +437,15 @@ function computeMatchScore(title, signals) {
     addScore(2, titleTokens.has(signals.cardNumber));
   }
 
+  if (signals.serial) {
+    const serialToken = signals.serial;
+    const hasSerial =
+      normalizedTitle.includes(`/${serialToken}`) ||
+      normalizedTitle.includes(`${serialToken}/`) ||
+      titleTokens.has(serialToken);
+    addScore(2, hasSerial);
+  }
+
   if (signals.grade) {
     addScore(2, normalizedTitle.includes(signals.grade));
   }
@@ -352,27 +455,67 @@ function computeMatchScore(title, signals) {
   return maxScore > 0 ? score / maxScore : 0;
 }
 
+function computeMatchScore(title, signals) {
+  if (!title) return 0;
+  const normalizedTitle = normalizeText(title);
+  const titleTokens = new Set(tokenize(normalizedTitle));
+  return computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals);
+}
+
+function isExcludedTitle(normalizedTitle) {
+  return EXCLUDE_REGEXES.some((regex) => regex.test(normalizedTitle));
+}
+
 function filterRelevantResults(results, signals, mode) {
   const scored = results.map((item) => {
-    const matchScore = computeMatchScore(item.title, signals);
-    return {...item, matchScore};
+    const normalizedTitle = normalizeText(item.title);
+    const titleTokens = new Set(tokenize(normalizedTitle));
+    const matchScore = computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals);
+    const excluded = isExcludedTitle(normalizedTitle);
+    return {...item, matchScore, _normalizedTitle: normalizedTitle, _titleTokens: titleTokens, _excluded: excluded};
   });
 
-  const baseThreshold = mode === "image" ? 0.2 : 0.35;
-  const fallbackThreshold = mode === "image" ? 0.15 : 0.25;
+  let filtered = scored.filter((item) => !item._excluded);
 
-  let filtered = scored.filter((item) => item.matchScore >= baseThreshold);
-  if (filtered.length < 5) {
-    filtered = scored.filter((item) => item.matchScore >= fallbackThreshold);
+  if (signals?.hasStrongPlayerTokens && signals.playerTokens.length) {
+    const requiredMatches = filtered.filter((item) =>
+      signals.playerTokens.some((token) => item._titleTokens.has(token)),
+    );
+    if (requiredMatches.length) {
+      filtered = requiredMatches;
+    } else {
+      filtered = [];
+    }
   }
 
-  if (!filtered.length) {
-    filtered = scored;
+  if (signals?.phrases?.length) {
+    const strongPhrases = signals.phrases.filter((phrase) => STRONG_PHRASES.has(phrase));
+    if (strongPhrases.length) {
+      const withPhrase = filtered.filter((item) =>
+        strongPhrases.some((phrase) => item._normalizedTitle.includes(phrase)),
+      );
+      if (withPhrase.length) {
+        filtered = withPhrase;
+      }
+    }
   }
 
-  return filtered
+  const baseThreshold = mode === "image" ? 0.3 : 0.4;
+  const fallbackThreshold = mode === "image" ? 0.2 : 0.3;
+
+  let thresholded = filtered.filter((item) => item.matchScore >= baseThreshold);
+  if (thresholded.length < 5) {
+    thresholded = filtered.filter((item) => item.matchScore >= fallbackThreshold);
+  }
+
+  if (!thresholded.length) {
+    thresholded = filtered;
+  }
+
+  return thresholded
     .sort((a, b) => b.matchScore - a.matchScore || a.price - b.price)
-    .slice(0, 80);
+    .slice(0, 80)
+    .map(({_normalizedTitle, _titleTokens, _excluded, ...rest}) => rest);
 }
 
 async function searchEbayTextOnceDetailed(query, fxRates) {
@@ -387,6 +530,7 @@ async function searchEbayTextOnceDetailed(query, fxRates) {
     q: query,
     limit: String(DEFAULT_LIMIT),
     fieldgroups: "EXTENDED",
+    category_ids: HOCKEY_CARDS_CATEGORY,
     filter: `buyingOptions:{AUCTION|FIXED_PRICE},itemEndDate:[${dateFilter}..]`,
     sort: "price",
   });
@@ -447,6 +591,7 @@ async function searchEbayImageOnceDetailed(imageUrl, fxRates) {
 
   const params = new URLSearchParams({
     limit: String(DEFAULT_LIMIT),
+    category_ids: HOCKEY_CARDS_CATEGORY,
     filter: "buyingOptions:{AUCTION|FIXED_PRICE}",
   });
 

@@ -148,7 +148,7 @@ async function updateUserCollection(userId) {
         let results = [];
         if (usingImageMode) {
           const imageUrl = typeof card.imageUrl === "string" ? card.imageUrl.trim() : "";
-          if (!imageUrl || !/^https?:\\/\\//i.test(imageUrl)) {
+          if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
             console.log(`  ⚠ ${card.item}: Missing image for image-based pricing`);
             failCount++;
             errors.push({cardId, cardName: card.item, error: "Missing image for image-based pricing"});

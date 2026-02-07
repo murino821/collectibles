@@ -338,7 +338,7 @@
                 <th>Úspešné</th>
                 <th>Chyby</th>
                 <th>Typ</th>
-                <th>Detail</th>
+                <th>Export JSON</th>
               </tr>
             </thead>
             <tbody id="updateLogsTableBody">
@@ -601,6 +601,7 @@
         }
 
         tbody.innerHTML = '';
+        window.updateLogsIndex = {};
         logs.forEach(log => {
           const tr = document.createElement('tr');
           const date = log.timestamp ? new Date(log.timestamp).toLocaleString('sk-SK') : 'N/A';
@@ -610,18 +611,8 @@
           const fail = log.failCount ?? 0;
           const typeLabel = `${log.triggerType || log.status || 'n/a'}${log.pricingMode ? ` / ${log.pricingMode}` : ''}`;
 
-          const debugText = log.debugSamples?.length ? JSON.stringify(log.debugSamples, null, 2) : '';
-          const errorText = log.errors?.length ? JSON.stringify(log.errors, null, 2) : '';
-
-          const detailHtml = debugText || errorText
-            ? `
-              <details>
-                <summary>Detail</summary>
-                ${debugText ? `<div style="margin-top:8px;"><strong>Debug samples</strong><pre style="white-space: pre-wrap; font-size: 11px; background: #f8fafc; padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto;">${escapeHtml(debugText)}</pre></div>` : ''}
-                ${errorText ? `<div style="margin-top:8px;"><strong>Errors</strong><pre style="white-space: pre-wrap; font-size: 11px; background: #fef2f2; padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto;">${escapeHtml(errorText)}</pre></div>` : ''}
-              </details>
-            `
-            : '-';
+          window.updateLogsIndex = window.updateLogsIndex || {};
+          window.updateLogsIndex[log.id] = log;
 
           tr.innerHTML = `
             <td>${date}</td>
@@ -630,7 +621,7 @@
             <td>${success}</td>
             <td>${fail}</td>
             <td>${typeLabel}</td>
-            <td>${detailHtml}</td>
+            <td><button onclick="exportUpdateLog('${log.id}')" style="background:#0ea5e9;">⬇️ Export JSON</button></td>
           `;
           tbody.appendChild(tr);
         });
@@ -638,6 +629,42 @@
         console.error('Error loading update logs:', error);
         tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444;">Chyba: ${error.message}</td></tr>`;
       }
+    };
+
+    function safeFilename(value) {
+      return String(value || "unknown")
+        .replace(/[^a-z0-9_-]+/gi, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 60);
+    }
+
+    window.exportUpdateLog = function(logId) {
+      const log = window.updateLogsIndex?.[logId];
+      if (!log) {
+        alert('Log nebol nájdený');
+        return;
+      }
+
+      const payload = {
+        ...log,
+        exportedAt: new Date().toISOString(),
+      };
+
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const emailPart = safeFilename(log.userEmail || log.userId || 'user');
+      const datePart = safeFilename(log.timestamp || new Date().toISOString());
+      const filename = `update-log_${emailPart}_${datePart}.json`;
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     };
 
     window.openRoleModal = function(userId, email, currentRole) {

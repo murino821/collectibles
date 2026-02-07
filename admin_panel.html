@@ -135,6 +135,11 @@
       color: #15803d;
     }
 
+    .mode-hybrid {
+      background: #ede9fe;
+      color: #6d28d9;
+    }
+
     button {
       background: #3b82f6;
       color: white;
@@ -165,6 +170,7 @@
 
     .status {
       margin-top: 20px;
+      margin-bottom: 16px;
       padding: 15px;
       border-radius: 8px;
       font-size: 14px;
@@ -183,6 +189,35 @@
     .status.error {
       background: #fee2e2;
       border-left: 4px solid #ef4444;
+    }
+
+    .status.hint {
+      background: #dcfce7;
+      border-left: 4px solid #22c55e;
+      color: #065f46;
+    }
+
+    .api-usage {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      background: #ecfeff;
+      border-left: 4px solid #06b6d4;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 18px;
+    }
+
+    .api-usage strong {
+      color: #0f172a;
+    }
+
+    .api-usage .api-split {
+      margin-left: 10px;
+      color: #475569;
     }
 
     .modal {
@@ -273,7 +308,18 @@
         </div>
       </div>
 
-      <div id="status"></div>
+      <div id="status" class="status hint">ℹ️ Tu sa zobrazia informácie o aktualizáciách, chybách a priebehu spracovania.</div>
+      <div class="api-usage">
+        <div>
+          <strong>eBay API dnes:</strong>
+          <span id="apiCallsToday">0</span> / <span id="apiDailyBudget">0</span>
+          <span class="api-split">Zostáva: <span id="apiCallsRemaining">0</span></span>
+          <span class="api-split">Text: <span id="apiCallsText">0</span></span>
+          <span class="api-split">Foto: <span id="apiCallsImage">0</span></span>
+          <span class="api-split">Dátum: <span id="apiUsageDate">-</span></span>
+        </div>
+        <button onclick="loadApiUsage()" style="background:#06b6d4;">🔄 Obnoviť API</button>
+      </div>
 
       <!-- Statistics -->
       <div class="stats-grid">
@@ -387,6 +433,7 @@
         <select id="pricingModeSelect">
           <option value="text">Text (názov karty)</option>
           <option value="image">Foto (obrázok karty)</option>
+          <option value="hybrid">Hybrid (text + foto)</option>
         </select>
       </div>
 
@@ -447,11 +494,19 @@
     const db = getFirestore(app);
     const functions = getFunctions(app, 'us-central1');
     const googleProvider = new GoogleAuthProvider();
+    const STATUS_HINT = 'ℹ️ Tu sa zobrazia informácie o aktualizáciách, chybách a priebehu spracovania.';
 
     let currentUser = null;
     let selectedUserId = null;
     let selectedPricingUserId = null;
     const grantAdminBtn = document.getElementById('grantAdminBtn');
+
+    function resetStatusHint() {
+      const status = document.getElementById('status');
+      if (!status) return;
+      status.className = 'status hint';
+      status.innerHTML = STATUS_HINT;
+    }
 
     if (isTest && grantAdminBtn) {
       grantAdminBtn.style.display = 'inline-block';
@@ -486,6 +541,7 @@
       // Load users
       await loadUsers();
       await loadUpdateLogs();
+      await loadApiUsage();
     });
 
     window.loginWithGoogle = async function() {
@@ -537,7 +593,8 @@
         // Update stats
         document.getElementById('totalUsers').textContent = users.length;
         document.getElementById('premiumUsers').textContent = users.filter(u => u.role === 'premium').length;
-        document.getElementById('totalCards').textContent = users.reduce((sum, u) => sum + u.currentCardCount, 0);
+        const totalCards = users.reduce((sum, u) => sum + (Number(u.currentCardCount) || 0), 0);
+        document.getElementById('totalCards').textContent = totalCards;
 
         // Update table
         tbody.innerHTML = '';
@@ -545,7 +602,9 @@
           const tr = document.createElement('tr');
           const nextUpdate = user.nextUpdateDate ? new Date(user.nextUpdateDate).toLocaleString('sk-SK') : 'N/A';
           const pricingMode = user.pricingMode || 'text';
-          const pricingLabel = pricingMode === 'image' ? 'FOTO' : 'TEXT';
+          const pricingLabel = pricingMode === 'image'
+            ? 'FOTO'
+            : (pricingMode === 'hybrid' ? 'HYBRID' : 'TEXT');
           tr.innerHTML = `
             <td>${user.email || user.displayName || user.id}</td>
             <td><span class="role-badge role-${user.role}">${user.role}</span></td>
@@ -569,7 +628,7 @@
 
         status.className = 'status success';
         status.innerHTML = `<strong>✅ Načítaných ${users.length} používateľov</strong>`;
-        setTimeout(() => { status.innerHTML = ''; }, 3000);
+        setTimeout(resetStatusHint, 3000);
       } catch (error) {
         console.error('Error loading users:', error);
         status.className = 'status error';
@@ -628,6 +687,28 @@
       } catch (error) {
         console.error('Error loading update logs:', error);
         tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444;">Chyba: ${error.message}</td></tr>`;
+      }
+    };
+
+    window.loadApiUsage = async function() {
+      try {
+        const getApiUsage = httpsCallable(functions, 'getApiUsageV2');
+        const result = await getApiUsage();
+        const usage = result.data?.usage || {};
+
+        const callsToday = usage.callsToday ?? 0;
+        const dailyBudget = usage.dailyBudget ?? 0;
+        const remaining = usage.remaining ?? Math.max(0, dailyBudget - callsToday);
+        const byType = usage.byType || {};
+
+        document.getElementById('apiCallsToday').textContent = callsToday;
+        document.getElementById('apiDailyBudget').textContent = dailyBudget;
+        document.getElementById('apiCallsRemaining').textContent = remaining;
+        document.getElementById('apiCallsText').textContent = byType.text ?? 0;
+        document.getElementById('apiCallsImage').textContent = byType.image ?? 0;
+        document.getElementById('apiUsageDate').textContent = usage.date || '-';
+      } catch (error) {
+        console.error('Error loading API usage:', error);
       }
     };
 
@@ -698,7 +779,7 @@
         closeModal();
         await loadUsers();
 
-        setTimeout(() => { status.innerHTML = ''; }, 3000);
+        setTimeout(resetStatusHint, 3000);
       } catch (error) {
         console.error('Error updating role:', error);
         status.className = 'status error';
@@ -737,7 +818,7 @@
         closePricingModeModal();
         await loadUsers();
 
-        setTimeout(() => { status.innerHTML = ''; }, 3000);
+        setTimeout(resetStatusHint, 3000);
       } catch (error) {
         console.error('Error updating pricing mode:', error);
         status.className = 'status error';
@@ -792,7 +873,7 @@
         closeUpdateDateModal();
         await loadUsers();
 
-        setTimeout(() => { status.innerHTML = ''; }, 3000);
+        setTimeout(resetStatusHint, 3000);
       } catch (error) {
         console.error('Error updating date:', error);
         status.className = 'status error';
@@ -849,7 +930,7 @@
             // Reload users
             loadUsers();
 
-            setTimeout(() => { status.innerHTML = ''; }, 8000);
+            setTimeout(resetStatusHint, 8000);
           } else if (statusData.status === 'error') {
             status.className = 'status error';
             status.innerHTML = `<strong>❌ Chyba pri aktualizácii:</strong><br><code>${statusData.error || 'Unknown error'}</code>`;
@@ -879,7 +960,7 @@
 
         status.className = 'status success';
         status.innerHTML = `<strong>✅ ECB kurzy aktualizované</strong><br>As of: ${asOf}`;
-        setTimeout(() => { status.innerHTML = ''; }, 4000);
+        setTimeout(resetStatusHint, 4000);
       } catch (error) {
         console.error('Error refreshing ECB rates:', error);
         status.className = 'status error';

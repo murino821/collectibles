@@ -4,7 +4,8 @@
  */
 
 const fetch = require("node-fetch");
-const {globalLimiter} = require("./rateLimiter");
+const admin = require("firebase-admin");
+const {globalLimiter, DAILY_BUDGET} = require("./rateLimiter");
 
 // Get credentials from environment variables (.env file)
 // Using process.env instead of deprecated functions.config()
@@ -111,6 +112,46 @@ const EXCLUDE_REGEXES = [
 // Token cache (in-memory for function lifetime)
 let cachedToken = null;
 let tokenExpiry = null;
+let cachedDb = null;
+
+function getDb() {
+  if (cachedDb) return cachedDb;
+  if (!admin.apps.length) {
+    admin.initializeApp();
+  }
+  cachedDb = admin.firestore();
+  return cachedDb;
+}
+
+async function recordApiCall(kind) {
+  try {
+    const db = getDb();
+    const today = new Date().toISOString().slice(0, 10);
+    const ref = db.collection("apiUsage").doc("ebay");
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists || snap.data()?.date !== today) {
+        tx.set(ref, {
+          date: today,
+          calls: 1,
+          byType: {[kind]: 1},
+          dailyBudget: DAILY_BUDGET,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, {merge: true});
+        return;
+      }
+
+      tx.update(ref, {
+        calls: admin.firestore.FieldValue.increment(1),
+        [`byType.${kind}`]: admin.firestore.FieldValue.increment(1),
+        dailyBudget: DAILY_BUDGET,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (error) {
+    console.warn("API usage log failed:", error.message);
+  }
+}
 
 /**
  * Get eBay OAuth access token
@@ -589,6 +630,7 @@ function filterRelevantResults(results, signals, mode) {
 async function searchEbayTextOnceDetailed(query, fxRates, options = {}) {
   const token = await getEbayToken();
   await globalLimiter.throttle();
+  await recordApiCall("text");
 
   const useEndDateFilter = options.useEndDateFilter !== false;
   const autoCorrect = options.autoCorrect || null;
@@ -669,6 +711,7 @@ async function fetchImageBase64(imageUrl) {
 async function searchEbayImageOnceDetailed(imageUrl, fxRates, options = {}) {
   const token = await getEbayToken();
   await globalLimiter.throttle();
+  await recordApiCall("image");
 
   const imageBase64 = await fetchImageBase64(imageUrl);
 
@@ -780,6 +823,7 @@ async function searchEbayCardWithDebug(cardName, fxRates = null) {
       queries: queryStats,
       aggregatedCount: aggregated.length,
       filteredCount: filtered.length,
+      apiCalls: queryStats.length,
     },
   };
 }
@@ -824,6 +868,7 @@ async function searchEbayCardByImageWithDebug(imageUrl, cardName, fxRates = null
       rawCount,
       mappedCount: items.length,
       filteredCount: filtered.length,
+      apiCalls: 1 + (fallback ? 1 : 0),
       fallback,
     },
   };

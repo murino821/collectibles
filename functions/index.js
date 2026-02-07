@@ -18,7 +18,7 @@ const {
   searchEbayCardByImageWithDebug,
   calculateEstimatedPriceDetailed,
 } = require("./ebayAPI");
-const {globalLimiter} = require("./rateLimiter");
+const {globalLimiter, DAILY_BUDGET} = require("./rateLimiter");
 
 const ECB_BASE_URL =
   "https://data-api.ecb.europa.eu/service/data/EXR/D.{CURRENCY}.EUR.SP00.A?format=jsondata";
@@ -86,6 +86,8 @@ async function updateUserCollection(userId, options = {}) {
   const userData = userSnap.exists ? userSnap.data() : {};
   const pricingMode = userData?.pricingMode || "text";
   const usingImageMode = pricingMode === "image";
+  const usingTextMode = pricingMode === "text";
+  const usingHybridMode = pricingMode === "hybrid";
   const triggerType = options.triggerType || "scheduled";
   console.log(`🧭 Pricing mode for user ${userId}: ${pricingMode}`);
 
@@ -120,6 +122,7 @@ async function updateUserCollection(userId, options = {}) {
 
   let successCount = 0;
   let failCount = 0;
+  let apiCallsUsed = 0;
   const errors = [];
   const debugSamples = [];
   const DEBUG_SAMPLE_LIMIT = 20;
@@ -161,39 +164,99 @@ async function updateUserCollection(userId, options = {}) {
         topResults: [],
         outcome: null,
         error: null,
+        warnings: [],
       };
 
       try {
         let results = [];
-        if (usingImageMode) {
-          const imageUrl = typeof card.imageUrl === "string" ? card.imageUrl.trim() : "";
-          if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
-            console.log(`  ⚠ ${card.item}: Missing image for image-based pricing`);
-            failCount++;
-            errors.push({cardId, cardName: card.item, error: "Missing image for image-based pricing"});
-            debugEntry.input = {imageUrl: imageUrl || null};
-            debugEntry.outcome = "missing-image";
-            await statusRef.update({
-              successCount,
-              failCount,
-              progress: successCount + failCount,
-            }).catch(() => { /* Ignore if status doc doesn't exist */ });
-            if (debugSamples.length < DEBUG_SAMPLE_LIMIT) debugSamples.push(debugEntry);
-            continue;
-          }
+        let textResponse = null;
+        let imageResponse = null;
+        const imageUrl = typeof card.imageUrl === "string" ? card.imageUrl.trim() : "";
 
-          console.log(`🖼️  Image search: ${card.item}`);
-          debugEntry.input = {imageUrl};
-          const searchResponse = await searchEbayCardByImageWithDebug(imageUrl, card.item, fxRates);
-          results = searchResponse.results || [];
-          debugEntry.search = searchResponse.debug || null;
-        } else {
-          console.log(`🔍 Text search: ${card.item}`);
-          debugEntry.input = {name: card.item};
-          const searchResponse = await searchEbayCardWithDebug(card.item, fxRates);
-          results = searchResponse.results || [];
-          debugEntry.search = searchResponse.debug || null;
+        if (usingTextMode || usingHybridMode) {
+          try {
+            console.log(`🔍 Text search: ${card.item}`);
+            debugEntry.input.name = card.item;
+            textResponse = await searchEbayCardWithDebug(card.item, fxRates);
+            apiCallsUsed += textResponse?.debug?.apiCalls || 0;
+          } catch (error) {
+            if (usingTextMode && !usingHybridMode) {
+              throw error;
+            }
+            debugEntry.warnings.push(`Text search failed: ${error.message}`);
+          }
         }
+
+        if (usingImageMode || usingHybridMode) {
+          debugEntry.input.imageUrl = imageUrl || null;
+          if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+            if (usingImageMode && !usingHybridMode) {
+              console.log(`  ⚠ ${card.item}: Missing image for image-based pricing`);
+              failCount++;
+              errors.push({cardId, cardName: card.item, error: "Missing image for image-based pricing"});
+              debugEntry.outcome = "missing-image";
+              await statusRef.update({
+                successCount,
+                failCount,
+                progress: successCount + failCount,
+              }).catch(() => { /* Ignore if status doc doesn't exist */ });
+              if (debugSamples.length < DEBUG_SAMPLE_LIMIT) debugSamples.push(debugEntry);
+              continue;
+            }
+            debugEntry.warnings.push("Missing image for image-based pricing");
+          } else {
+            try {
+              console.log(`🖼️  Image search: ${card.item}`);
+              imageResponse = await searchEbayCardByImageWithDebug(imageUrl, card.item, fxRates);
+              apiCallsUsed += imageResponse?.debug?.apiCalls || 0;
+            } catch (error) {
+              if (usingImageMode && !usingHybridMode) {
+                throw error;
+              }
+              debugEntry.warnings.push(`Image search failed: ${error.message}`);
+            }
+          }
+        }
+
+        if (usingHybridMode) {
+          const textResults = textResponse?.results || [];
+          const imageResults = imageResponse?.results || [];
+          const merged = new Map();
+          const addResult = (item, source) => {
+            const key = item.id || `${item.title}-${item.price}`;
+            const existing = merged.get(key);
+            if (!existing) {
+              merged.set(key, {...item, sources: [source]});
+              return;
+            }
+            existing.sources = Array.from(new Set([...(existing.sources || []), source]));
+            const score = typeof item.matchScore === "number" ? item.matchScore : null;
+            if (score != null) {
+              const prev = typeof existing.matchScore === "number" ? existing.matchScore : null;
+              if (prev == null || score > prev) {
+                existing.matchScore = score;
+              }
+            }
+          };
+
+          textResults.forEach((item) => addResult(item, "text"));
+          imageResults.forEach((item) => addResult(item, "image"));
+          results = Array.from(merged.values());
+
+          debugEntry.search = {
+            text: textResponse?.debug || null,
+            image: imageResponse?.debug || null,
+            combinedCount: results.length,
+          };
+        } else if (usingImageMode) {
+          results = imageResponse?.results || [];
+          debugEntry.search = imageResponse?.debug || null;
+        } else {
+          results = textResponse?.results || [];
+          debugEntry.search = textResponse?.debug || null;
+        }
+
+        debugEntry.apiCalls = (textResponse?.debug?.apiCalls || 0) + (imageResponse?.debug?.apiCalls || 0);
 
         debugEntry.topResults = results.slice(0, 3).map((item) => ({
           title: item.title,
@@ -292,7 +355,7 @@ async function updateUserCollection(userId, options = {}) {
     successCount,
     failCount,
     errors: errors.slice(0, 10), // First 10 errors only
-    apiCallsUsed: successCount + failCount,
+    apiCallsUsed,
     status: failCount === 0 ? "success" : (successCount > 0 ? "partial" : "failed"),
     triggerType,
     pricingMode,
@@ -314,6 +377,7 @@ async function updateUserCollection(userId, options = {}) {
     cardsProcessed: cards.length,
     successCount,
     failCount,
+    apiCallsUsed,
   };
 }
 
@@ -736,6 +800,7 @@ exports.updateUserCollectionV2 = onCall(async (request) => {
             successCount: result.successCount || 0,
             failCount: result.failCount || 0,
             cardsProcessed: result.cardsProcessed || 0,
+            apiCallsUsed: result.apiCallsUsed || 0,
           });
           console.log(`✅ Background update completed for user ${targetUserId}`);
         })
@@ -914,6 +979,42 @@ exports.getUpdateLogsV2 = onCall(async (request) => {
   }
 });
 
+exports.getApiUsageV2 = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User not logged in");
+  }
+
+  const userId = request.auth.uid;
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (!isAllowlistedAdmin(request) && (!userDoc.exists || userDoc.data().role !== "admin")) {
+    throw new HttpsError("permission-denied", "Only admins can access this function");
+  }
+
+  try {
+    const usageSnap = await db.collection("apiUsage").doc("ebay").get();
+    const data = usageSnap.data() || {};
+    const today = new Date().toISOString().slice(0, 10);
+    const callsToday = data.date === today ? (data.calls || 0) : 0;
+    const dailyBudget = data.dailyBudget || DAILY_BUDGET;
+    const remaining = Math.max(0, dailyBudget - callsToday);
+
+    return {
+      success: true,
+      usage: {
+        date: data.date || today,
+        callsToday,
+        dailyBudget,
+        remaining,
+        byType: data.byType || {},
+        updatedAt: data.updatedAt?.toDate?.().toISOString?.() || null,
+      },
+    };
+  } catch (error) {
+    console.error("Error loading API usage:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
 exports.updateUserRoleV2 = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User not logged in");
@@ -988,8 +1089,8 @@ exports.updatePricingModeV2 = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Missing targetUserId or pricingMode");
   }
 
-  if (!["text", "image"].includes(pricingMode)) {
-    throw new HttpsError("invalid-argument", "Invalid pricingMode. Must be: text or image");
+  if (!["text", "image", "hybrid"].includes(pricingMode)) {
+    throw new HttpsError("invalid-argument", "Invalid pricingMode. Must be: text, image, or hybrid");
   }
 
   console.log(`🔧 updatePricingMode: ${adminId} changing ${targetUserId} to ${pricingMode}`);

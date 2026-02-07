@@ -60,6 +60,7 @@ const PHRASE_KEYWORDS = [
   "sign of the times",
   "sott",
   "mvp",
+  "beehive",
   "stature",
   "artifacts",
   "trilogy",
@@ -91,7 +92,8 @@ const STRONG_PHRASES = new Set([
 const EXCLUDE_REGEXES = [
   /\blot\b/,
   /\blots\b/,
-  /\bu\s?pick\b/,
+  /\bu[-\s]?pick\b/,
+  /\bupick\b/,
   /\bpick (from|your)\b/,
   /\b(you choose|choose from|your choice)\b/,
   /\b(complete|team|base|master) set\b/,
@@ -232,6 +234,15 @@ const EXTRA_PLAYER_STOP_WORDS = [
   "universe",
   "canvas",
   "rookies",
+  "matte",
+  "gold",
+  "silver",
+  "bronze",
+  "platinum",
+  "chrome",
+  "renewed",
+  "salute",
+  "cache",
 ];
 const PLAYER_STOP_WORDS = new Set([
   ...STOP_WORDS,
@@ -260,6 +271,7 @@ function extractSignals(cardName) {
   if (!playerTokens.length) {
     playerTokens = nonNumericTokens.slice(0, 1);
   }
+  const playerKeyToken = playerTokens.length ? playerTokens[playerTokens.length - 1] : null;
 
   const yearRange = yearRangeMatch ? yearRangeMatch[0].replace(/\s+/g, "") : null;
   const year = yearMatch ? yearMatch[0] : null;
@@ -278,6 +290,7 @@ function extractSignals(cardName) {
     normalized,
     playerTokens,
     hasStrongPlayerTokens,
+    playerKeyToken,
     keyTokens,
     year,
     yearRange,
@@ -293,6 +306,7 @@ function buildSignalsSummary(signals) {
   return {
     playerTokens: signals.playerTokens || [],
     hasStrongPlayerTokens: !!signals.hasStrongPlayerTokens,
+    playerKeyToken: signals.playerKeyToken || null,
     phrases: signals.phrases || [],
     year: signals.year || null,
     yearRange: signals.yearRange || null,
@@ -466,37 +480,87 @@ function isExcludedTitle(normalizedTitle) {
   return EXCLUDE_REGEXES.some((regex) => regex.test(normalizedTitle));
 }
 
+function hasStrongPhraseMatch(normalizedTitle, phrase) {
+  if (!phrase) return false;
+  if (phrase === "young guns") {
+    return normalizedTitle.includes("young guns") || /\byg\b/.test(normalizedTitle) || /\byg\d+\b/.test(normalizedTitle);
+  }
+  if (phrase === "sign of the times") {
+    return normalizedTitle.includes("sign of the times") || /\bsott\b/.test(normalizedTitle);
+  }
+  if (phrase === "future watch") {
+    return normalizedTitle.includes("future watch") || /\bfw\b/.test(normalizedTitle);
+  }
+  return normalizedTitle.includes(phrase);
+}
+
+function hasSerialMatch(normalizedTitle, titleTokens, serial) {
+  if (!serial) return null;
+  return (
+    normalizedTitle.includes(`/${serial}`) ||
+    normalizedTitle.includes(`${serial}/`) ||
+    titleTokens.has(serial)
+  );
+}
+
+function hasGradeMatch(normalizedTitle, grade) {
+  if (!grade) return null;
+  return normalizedTitle.includes(grade);
+}
+
 function filterRelevantResults(results, signals, mode) {
   const scored = results.map((item) => {
     const normalizedTitle = normalizeText(item.title);
     const titleTokens = new Set(tokenize(normalizedTitle));
     const matchScore = computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals);
     const excluded = isExcludedTitle(normalizedTitle);
-    return {...item, matchScore, _normalizedTitle: normalizedTitle, _titleTokens: titleTokens, _excluded: excluded};
+    const serialMatch = hasSerialMatch(normalizedTitle, titleTokens, signals?.serial || null);
+    const gradeMatch = hasGradeMatch(normalizedTitle, signals?.grade || null);
+    return {
+      ...item,
+      matchScore,
+      serialMatch,
+      gradeMatch,
+      _normalizedTitle: normalizedTitle,
+      _titleTokens: titleTokens,
+      _excluded: excluded,
+    };
   });
 
   let filtered = scored.filter((item) => !item._excluded);
 
-  if (signals?.hasStrongPlayerTokens && signals.playerTokens.length) {
-    const requiredMatches = filtered.filter((item) =>
-      signals.playerTokens.some((token) => item._titleTokens.has(token)),
-    );
-    if (requiredMatches.length) {
-      filtered = requiredMatches;
-    } else {
-      filtered = [];
-    }
+  if (signals?.hasStrongPlayerTokens && signals.playerKeyToken) {
+    const requiredMatches = filtered.filter((item) => item._titleTokens.has(signals.playerKeyToken));
+    filtered = requiredMatches;
   }
 
   if (signals?.phrases?.length) {
     const strongPhrases = signals.phrases.filter((phrase) => STRONG_PHRASES.has(phrase));
     if (strongPhrases.length) {
       const withPhrase = filtered.filter((item) =>
-        strongPhrases.some((phrase) => item._normalizedTitle.includes(phrase)),
+        strongPhrases.some((phrase) => hasStrongPhraseMatch(item._normalizedTitle, phrase)),
       );
-      if (withPhrase.length) {
-        filtered = withPhrase;
-      }
+      filtered = withPhrase;
+    }
+  }
+
+  let serialFallbackApplied = false;
+  if (signals?.serial) {
+    const serialMatches = filtered.filter((item) => item.serialMatch);
+    if (serialMatches.length) {
+      filtered = serialMatches;
+    } else if (filtered.length) {
+      serialFallbackApplied = true;
+    }
+  }
+
+  let gradeFallbackApplied = false;
+  if (signals?.grade) {
+    const gradeMatches = filtered.filter((item) => item.gradeMatch);
+    if (gradeMatches.length) {
+      filtered = gradeMatches;
+    } else if (filtered.length) {
+      gradeFallbackApplied = true;
     }
   }
 
@@ -515,25 +579,40 @@ function filterRelevantResults(results, signals, mode) {
   return thresholded
     .sort((a, b) => b.matchScore - a.matchScore || a.price - b.price)
     .slice(0, 80)
-    .map(({_normalizedTitle, _titleTokens, _excluded, ...rest}) => rest);
+    .map(({_normalizedTitle, _titleTokens, _excluded, ...rest}) => ({
+      ...rest,
+      serialFallback: serialFallbackApplied,
+      gradeFallback: gradeFallbackApplied,
+    }));
 }
 
-async function searchEbayTextOnceDetailed(query, fxRates) {
+async function searchEbayTextOnceDetailed(query, fxRates, options = {}) {
   const token = await getEbayToken();
   await globalLimiter.throttle();
 
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const dateFilter = ninetyDaysAgo.toISOString();
+  const useEndDateFilter = options.useEndDateFilter !== false;
+  const autoCorrect = options.autoCorrect || null;
 
   const params = new URLSearchParams({
     q: query,
     limit: String(DEFAULT_LIMIT),
     fieldgroups: "EXTENDED",
     category_ids: HOCKEY_CARDS_CATEGORY,
-    filter: `buyingOptions:{AUCTION|FIXED_PRICE},itemEndDate:[${dateFilter}..]`,
     sort: "price",
   });
+
+  if (useEndDateFilter) {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const dateFilter = ninetyDaysAgo.toISOString();
+    params.set("filter", `buyingOptions:{AUCTION|FIXED_PRICE},itemEndDate:[${dateFilter}..]`);
+  } else {
+    params.set("filter", "buyingOptions:{AUCTION|FIXED_PRICE}");
+  }
+
+  if (autoCorrect) {
+    params.set("auto_correct", autoCorrect);
+  }
 
   const response = await fetch(
     `${BROWSE_BASE}/buy/browse/v1/item_summary/search?${params}`,
@@ -557,6 +636,10 @@ async function searchEbayTextOnceDetailed(query, fxRates) {
       throw new Error("Rate limit exceeded");
     }
 
+    if (response.status === 400 && autoCorrect && !options._retrying) {
+      return searchEbayTextOnceDetailed(query, fxRates, {...options, autoCorrect: null, _retrying: true});
+    }
+
     throw new Error(`eBay API error: ${response.status}`);
   }
 
@@ -569,8 +652,8 @@ async function searchEbayTextOnceDetailed(query, fxRates) {
   return {items, rawCount};
 }
 
-async function searchEbayTextOnce(query, fxRates) {
-  const {items} = await searchEbayTextOnceDetailed(query, fxRates);
+async function searchEbayTextOnce(query, fxRates, options = {}) {
+  const {items} = await searchEbayTextOnceDetailed(query, fxRates, options);
   return items;
 }
 
@@ -583,7 +666,7 @@ async function fetchImageBase64(imageUrl) {
   return Buffer.from(arrayBuffer).toString("base64");
 }
 
-async function searchEbayImageOnceDetailed(imageUrl, fxRates) {
+async function searchEbayImageOnceDetailed(imageUrl, fxRates, options = {}) {
   const token = await getEbayToken();
   await globalLimiter.throttle();
 
@@ -592,8 +675,10 @@ async function searchEbayImageOnceDetailed(imageUrl, fxRates) {
   const params = new URLSearchParams({
     limit: String(DEFAULT_LIMIT),
     category_ids: HOCKEY_CARDS_CATEGORY,
-    filter: "buyingOptions:{AUCTION|FIXED_PRICE}",
   });
+  if (options.useFilters !== false) {
+    params.set("filter", "buyingOptions:{AUCTION|FIXED_PRICE}");
+  }
 
   const response = await fetch(
     `${BROWSE_BASE}/buy/browse/v1/item_summary/search_by_image?${params}`,
@@ -638,27 +723,8 @@ async function searchEbayImageOnceDetailed(imageUrl, fxRates) {
  * @return {Promise<Array>} Array of listing results
  */
 async function searchEbayCard(cardName, fxRates = null) {
-  if (!cardName) return [];
-
-  const signals = extractSignals(cardName);
-  const queries = buildSearchQueries(signals);
-
-  let aggregated = [];
-
-  for (const query of queries) {
-    if (!query) continue;
-    console.log(`eBay text search query: "${query}"`);
-    const results = await searchEbayTextOnce(query, fxRates);
-    aggregated = mergeUniqueResults(aggregated, results);
-    if (aggregated.length >= MIN_RESULTS_TARGET) break;
-  }
-
-  if (!aggregated.length) {
-    console.log(`No eBay results for: ${cardName}`);
-    return [];
-  }
-
-  return filterRelevantResults(aggregated, signals, "text");
+  const {results} = await searchEbayCardWithDebug(cardName, fxRates);
+  return results;
 }
 
 async function searchEbayCardWithDebug(cardName, fxRates = null) {
@@ -672,18 +738,36 @@ async function searchEbayCardWithDebug(cardName, fxRates = null) {
 
   let aggregated = [];
 
-  for (const query of queries) {
-    if (!query) continue;
-    console.log(`eBay text search query: "${query}"`);
-    const {items, rawCount} = await searchEbayTextOnceDetailed(query, fxRates);
-    aggregated = mergeUniqueResults(aggregated, items);
-    queryStats.push({
-      query,
-      rawCount,
-      mappedCount: items.length,
-      aggregatedCount: aggregated.length,
-    });
-    if (aggregated.length >= MIN_RESULTS_TARGET) break;
+  const runQueries = async (queryList, options, phase) => {
+    for (const query of queryList) {
+      if (!query) continue;
+      console.log(`eBay text search query: "${query}" (${phase})`);
+      const {items, rawCount} = await searchEbayTextOnceDetailed(query, fxRates, options);
+      aggregated = mergeUniqueResults(aggregated, items);
+      queryStats.push({
+        query,
+        rawCount,
+        mappedCount: items.length,
+        aggregatedCount: aggregated.length,
+        phase,
+        options: {
+          useEndDateFilter: options?.useEndDateFilter !== false,
+          autoCorrect: options?.autoCorrect || null,
+        },
+      });
+      if (aggregated.length >= MIN_RESULTS_TARGET) break;
+    }
+  };
+
+  await runQueries(queries, {useEndDateFilter: true}, "A");
+
+  if (!aggregated.length) {
+    await runQueries(queries, {useEndDateFilter: false}, "B");
+  }
+
+  if (!aggregated.length) {
+    const rawQuery = buildQueryString([cardName]);
+    await runQueries([rawQuery], {useEndDateFilter: false, autoCorrect: "KEYWORD"}, "C");
   }
 
   const filtered = aggregated.length ? filterRelevantResults(aggregated, signals, "text") : [];
@@ -708,16 +792,8 @@ async function searchEbayCardWithDebug(cardName, fxRates = null) {
  * @return {Promise<Array>} Array of listing results
  */
 async function searchEbayCardByImage(imageUrl, cardName, fxRates = null) {
-  if (!imageUrl) return [];
-  const {items} = await searchEbayImageOnceDetailed(imageUrl, fxRates);
-  if (!items.length) return [];
-
-  const signals = cardName ? extractSignals(cardName) : null;
-  if (!signals) {
-    return items;
-  }
-
-  return filterRelevantResults(items, signals, "image");
+  const {results} = await searchEbayCardByImageWithDebug(imageUrl, cardName, fxRates);
+  return results;
 }
 
 async function searchEbayCardByImageWithDebug(imageUrl, cardName, fxRates = null) {
@@ -727,7 +803,18 @@ async function searchEbayCardByImageWithDebug(imageUrl, cardName, fxRates = null
 
   const {items, rawCount} = await searchEbayImageOnceDetailed(imageUrl, fxRates);
   const signals = cardName ? extractSignals(cardName) : null;
-  const filtered = signals ? filterRelevantResults(items, signals, "image") : items;
+  let filtered = signals ? filterRelevantResults(items, signals, "image") : items;
+  let fallback = null;
+
+  if (!filtered.length) {
+    const fallbackResp = await searchEbayImageOnceDetailed(imageUrl, fxRates, {useFilters: false});
+    const fallbackItems = fallbackResp.items || [];
+    fallback = {
+      rawCount: fallbackResp.rawCount,
+      mappedCount: fallbackItems.length,
+    };
+    filtered = signals ? filterRelevantResults(fallbackItems, signals, "image") : fallbackItems;
+  }
 
   return {
     results: filtered,
@@ -737,6 +824,7 @@ async function searchEbayCardByImageWithDebug(imageUrl, cardName, fxRates = null
       rawCount,
       mappedCount: items.length,
       filteredCount: filtered.length,
+      fallback,
     },
   };
 }
@@ -841,6 +929,16 @@ function calculateEstimatedPriceDetailed(results) {
     }
   }
 
+  const serialFallback = results.some((item) => item.serialFallback);
+  if (serialFallback) {
+    discountPct += 0.06;
+  }
+
+  const gradeFallback = results.some((item) => item.gradeFallback);
+  if (gradeFallback) {
+    discountPct += 0.05;
+  }
+
   discountPct = Math.min(Math.max(discountPct, 0.1), 0.55);
 
   const discountedPrice = baseAverage * (1 - discountPct);
@@ -856,6 +954,8 @@ function calculateEstimatedPriceDetailed(results) {
     fixedResults: fixedResults.length,
     auctionCandidates: results.filter((item) => item.isAuctionOnly).length,
     auctionFloor: auctionFloor ? parseFloat(auctionFloor.toFixed(2)) : null,
+    serialFallback,
+    gradeFallback,
     priceStats: {
       min: prices[0],
       max: prices[prices.length - 1],

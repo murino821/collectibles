@@ -220,6 +220,35 @@
       color: #475569;
     }
 
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .filters label {
+      font-size: 12px;
+      color: #475569;
+      margin-right: 6px;
+    }
+
+    .filters select,
+    .filters input {
+      padding: 6px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 13px;
+      background: #fff;
+    }
+
+    .filters .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     .modal {
       display: none;
       position: fixed;
@@ -340,7 +369,27 @@
       <!-- Users table -->
       <div class="card">
         <h2 style="margin-bottom: 20px;">Používatelia</h2>
-        <button onclick="loadUsers()" style="margin-bottom: 20px;">🔄 Obnoviť</button>
+        <div class="filters">
+          <button onclick="loadUsers()">🔄 Obnoviť</button>
+          <div class="filter-group">
+            <label for="userRoleFilter">Rola:</label>
+            <select id="userRoleFilter" onchange="applyUserFilters()">
+              <option value="">Všetci</option>
+              <option value="standard">Standard</option>
+              <option value="premium">Premium</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="userModeFilter">Režim:</label>
+            <select id="userModeFilter" onchange="applyUserFilters()">
+              <option value="">Všetky</option>
+              <option value="text">Text</option>
+              <option value="image">Foto</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+        </div>
 
         <div style="overflow-x: auto;">
           <table id="usersTable">
@@ -372,7 +421,32 @@
       <!-- Update Logs Section -->
       <div class="card" style="margin-top: 30px;">
         <h2 style="margin-bottom: 20px;">📋 História aktualizácií</h2>
-        <button onclick="loadUpdateLogs()" style="margin-bottom: 20px;">🔄 Obnoviť</button>
+        <div class="filters">
+          <button onclick="loadUpdateLogs({reset: true})">🔄 Obnoviť</button>
+          <div class="filter-group">
+            <label for="logUserFilter">Používateľ:</label>
+            <select id="logUserFilter" onchange="applyLogFilters()">
+              <option value="">Všetci</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="logTypeFilter">Typ:</label>
+            <select id="logTypeFilter" onchange="applyLogFilters()">
+              <option value="">Všetky</option>
+              <option value="manual">Manual</option>
+              <option value="scheduled">Scheduled</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="logModeFilter">Režim:</label>
+            <select id="logModeFilter" onchange="applyLogFilters()">
+              <option value="">Všetky</option>
+              <option value="text">Text</option>
+              <option value="image">Foto</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+        </div>
 
         <div style="overflow-x: auto;">
           <table id="updateLogsTable">
@@ -396,6 +470,7 @@
             </tbody>
           </table>
         </div>
+        <button id="loadMoreLogsBtn" onclick="loadMoreLogs()" style="margin-top: 12px; display: none;">Načítať ďalšie</button>
       </div>
     </div>
   </div>
@@ -499,6 +574,9 @@
     let currentUser = null;
     let selectedUserId = null;
     let selectedPricingUserId = null;
+    let allUsers = [];
+    let updateLogsCursor = null;
+    const UPDATE_LOGS_LIMIT = 20;
     const grantAdminBtn = document.getElementById('grantAdminBtn');
 
     function resetStatusHint() {
@@ -540,7 +618,7 @@
 
       // Load users
       await loadUsers();
-      await loadUpdateLogs();
+      await loadUpdateLogs({reset: true});
       await loadApiUsage();
     });
 
@@ -588,43 +666,10 @@
       try {
         const getAllUsers = httpsCallable(functions, 'getAllUsersV2');
         const result = await getAllUsers();
-        const users = result.data.users;
-
-        // Update stats
-        document.getElementById('totalUsers').textContent = users.length;
-        document.getElementById('premiumUsers').textContent = users.filter(u => u.role === 'premium').length;
-        const totalCards = users.reduce((sum, u) => sum + (Number(u.currentCardCount) || 0), 0);
-        document.getElementById('totalCards').textContent = totalCards;
-
-        // Update table
-        tbody.innerHTML = '';
-        users.forEach(user => {
-          const tr = document.createElement('tr');
-          const nextUpdate = user.nextUpdateDate ? new Date(user.nextUpdateDate).toLocaleString('sk-SK') : 'N/A';
-          const pricingMode = user.pricingMode || 'text';
-          const pricingLabel = pricingMode === 'image'
-            ? 'FOTO'
-            : (pricingMode === 'hybrid' ? 'HYBRID' : 'TEXT');
-          tr.innerHTML = `
-            <td>${user.email || user.displayName || user.id}</td>
-            <td><span class="role-badge role-${user.role}">${user.role}</span></td>
-            <td><span class="mode-badge mode-${pricingMode}">${pricingLabel}</span></td>
-            <td><strong>${user.currentCardCount}</strong></td>
-            <td>${user.cardLimit === 999999 ? '∞' : user.cardLimit}</td>
-            <td>${user.updateIntervalDays} dní</td>
-            <td>
-              ${nextUpdate}
-              <button onclick="openUpdateDateModal('${user.id}', '${user.email}', '${user.nextUpdateDate || ''}')" style="margin-left: 5px; padding: 4px 8px; font-size: 12px;">✏️</button>
-            </td>
-            <td>${user.createdAt ? new Date(user.createdAt).toLocaleDateString('sk-SK') : 'N/A'}</td>
-            <td>
-              <button onclick="triggerUpdateNow('${user.id}', '${user.email}')" style="background: #10b981; margin-bottom: 5px;">▶️ Spustiť update</button><br>
-              <button onclick="openRoleModal('${user.id}', '${user.email}', '${user.role}')">Zmeniť rolu</button><br>
-              <button onclick="openPricingModeModal('${user.id}', '${user.email}', '${pricingMode}')" style="margin-top: 5px; background: #0ea5e9;">Zmeniť mód</button>
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
+        const users = result.data.users || [];
+        allUsers = users;
+        populateUserFilter(users);
+        renderUsers();
 
         status.className = 'status success';
         status.innerHTML = `<strong>✅ Načítaných ${users.length} používateľov</strong>`;
@@ -636,6 +681,72 @@
       }
     };
 
+    function populateUserFilter(users) {
+      const select = document.getElementById('logUserFilter');
+      if (!select) return;
+      const currentValue = select.value;
+      const options = ['<option value=\"\">Všetci</option>'];
+      users.forEach(user => {
+        const email = user.email || user.displayName || user.id;
+        if (email) {
+          options.push(`<option value=\"${email}\">${email}</option>`);
+        }
+      });
+      select.innerHTML = options.join('');
+      if (currentValue && select.querySelector(`option[value=\"${currentValue}\"]`)) {
+        select.value = currentValue;
+      }
+    }
+
+    function renderUsers() {
+      const tbody = document.getElementById('usersTableBody');
+      const roleFilter = document.getElementById('userRoleFilter')?.value || '';
+      const modeFilter = document.getElementById('userModeFilter')?.value || '';
+      const filtered = allUsers.filter(u => {
+        if (roleFilter && u.role !== roleFilter) return false;
+        if (modeFilter && (u.pricingMode || 'text') !== modeFilter) return false;
+        return true;
+      });
+
+      document.getElementById('totalUsers').textContent = filtered.length;
+      document.getElementById('premiumUsers').textContent = filtered.filter(u => u.role === 'premium').length;
+      const totalCards = filtered.reduce((sum, u) => sum + (Number(u.currentCardCount) || 0), 0);
+      document.getElementById('totalCards').textContent = totalCards;
+
+      tbody.innerHTML = '';
+      filtered.forEach(user => {
+        const tr = document.createElement('tr');
+        const nextUpdate = user.nextUpdateDate ? new Date(user.nextUpdateDate).toLocaleString('sk-SK') : 'N/A';
+        const pricingMode = user.pricingMode || 'text';
+        const pricingLabel = pricingMode === 'image'
+          ? 'FOTO'
+          : (pricingMode === 'hybrid' ? 'HYBRID' : 'TEXT');
+        tr.innerHTML = `
+          <td>${user.email || user.displayName || user.id}</td>
+          <td><span class="role-badge role-${user.role}">${user.role}</span></td>
+          <td><span class="mode-badge mode-${pricingMode}">${pricingLabel}</span></td>
+          <td><strong>${user.currentCardCount}</strong></td>
+          <td>${user.cardLimit === 999999 ? '∞' : user.cardLimit}</td>
+          <td>${user.updateIntervalDays} dní</td>
+          <td>
+            ${nextUpdate}
+            <button onclick="openUpdateDateModal('${user.id}', '${user.email}', '${user.nextUpdateDate || ''}')" style="margin-left: 5px; padding: 4px 8px; font-size: 12px;">✏️</button>
+          </td>
+          <td>${user.createdAt ? new Date(user.createdAt).toLocaleDateString('sk-SK') : 'N/A'}</td>
+          <td>
+            <button id="updateBtn-${user.id}" onclick="triggerUpdateNow('${user.id}', '${user.email}', this)" style="background: #10b981; margin-bottom: 5px;">▶️ Spustiť update</button><br>
+            <button onclick="openRoleModal('${user.id}', '${user.email}', '${user.role}')">Zmeniť rolu</button><br>
+            <button onclick="openPricingModeModal('${user.id}', '${user.email}', '${pricingMode}')" style="margin-top: 5px; background: #0ea5e9;">Zmeniť mód</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    window.applyUserFilters = function() {
+      renderUsers();
+    };
+
     function escapeHtml(value) {
       return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -645,22 +756,55 @@
         .replace(/'/g, '&#39;');
     }
 
-    window.loadUpdateLogs = async function() {
+    function buildLogFilters() {
+      return {
+        userEmail: document.getElementById('logUserFilter')?.value || '',
+        triggerType: document.getElementById('logTypeFilter')?.value || '',
+        pricingMode: document.getElementById('logModeFilter')?.value || '',
+      };
+    }
+
+    window.applyLogFilters = function() {
+      updateLogsCursor = null;
+      window.loadUpdateLogs({reset: true});
+    };
+
+    window.loadMoreLogs = function() {
+      window.loadUpdateLogs({append: true});
+    };
+
+    window.loadUpdateLogs = async function(options = {}) {
       const tbody = document.getElementById('updateLogsTableBody');
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Načítavam históriu...</td></tr>`;
+      const loadMoreBtn = document.getElementById('loadMoreLogsBtn');
+      const isReset = options.reset || false;
+      const isAppend = options.append || false;
+
+      if (!isAppend) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Načítavam históriu...</td></tr>`;
+      }
 
       try {
         const getUpdateLogs = httpsCallable(functions, 'getUpdateLogsV2');
-        const result = await getUpdateLogs({ limit: 30 });
+        const result = await getUpdateLogs({
+          limit: UPDATE_LOGS_LIMIT,
+          filters: buildLogFilters(),
+          startAfter: updateLogsCursor,
+        });
         const logs = result.data?.logs || [];
+        const nextPageToken = result.data?.nextPageToken || null;
 
         if (!logs.length) {
-          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Žiadne záznamy</td></tr>`;
+          if (!isAppend) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8;">Žiadne záznamy</td></tr>`;
+          }
+          if (loadMoreBtn) loadMoreBtn.style.display = 'none';
           return;
         }
 
-        tbody.innerHTML = '';
-        window.updateLogsIndex = {};
+        if (!isAppend) {
+          tbody.innerHTML = '';
+          window.updateLogsIndex = {};
+        }
         logs.forEach(log => {
           const tr = document.createElement('tr');
           const date = log.timestamp ? new Date(log.timestamp).toLocaleString('sk-SK') : 'N/A';
@@ -684,9 +828,17 @@
           `;
           tbody.appendChild(tr);
         });
+
+        updateLogsCursor = nextPageToken;
+        if (loadMoreBtn) {
+          loadMoreBtn.style.display = updateLogsCursor ? 'inline-block' : 'none';
+        }
       } catch (error) {
         console.error('Error loading update logs:', error);
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444;">Chyba: ${error.message}</td></tr>`;
+        if (!isAppend) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444;">Chyba: ${error.message}</td></tr>`;
+        }
+        if (loadMoreBtn) loadMoreBtn.style.display = 'none';
       }
     };
 
@@ -882,8 +1034,14 @@
     };
 
     // Trigger update now function
-    window.triggerUpdateNow = async function(userId, email) {
+    window.triggerUpdateNow = async function(userId, email, btn) {
       const status = document.getElementById('status');
+      const button = btn || document.getElementById(`updateBtn-${userId}`);
+      if (button) {
+        button.disabled = true;
+        button.dataset.originalLabel = button.dataset.originalLabel || button.textContent;
+        button.textContent = '⏳ Update spustený';
+      }
 
       status.className = 'status loading';
       status.innerHTML = `<strong>⏳ Spúšťam aktualizáciu pre ${email}...</strong>`;
@@ -927,6 +1085,11 @@
             // Stop listening
             if (unsubscribe) unsubscribe();
 
+            if (button) {
+              button.disabled = false;
+              button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
+            }
+
             // Reload users
             loadUsers();
 
@@ -937,6 +1100,11 @@
 
             // Stop listening
             if (unsubscribe) unsubscribe();
+
+            if (button) {
+              button.disabled = false;
+              button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
+            }
           }
         });
 
@@ -944,6 +1112,10 @@
         console.error('Error triggering update:', error);
         status.className = 'status error';
         status.innerHTML = `<strong>❌ Chyba pri aktualizácii:</strong><br><code>${error.message}</code>`;
+        if (button) {
+          button.disabled = false;
+          button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
+        }
       }
     };
 

@@ -732,6 +732,41 @@ exports.checkScheduledUpdatesV2 = onSchedule(
     },
 );
 
+exports.cleanupUpdateLogsV2 = onSchedule(
+    {schedule: "30 4 * * *", timeZone: "Europe/Bratislava"},
+    async () => {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 7);
+      const cutoff = admin.firestore.Timestamp.fromDate(cutoffDate);
+
+      console.log(`🧹 Cleaning updateLogs older than ${cutoffDate.toISOString()}`);
+
+      const batchSize = 250;
+      let totalDeleted = 0;
+
+      while (true) {
+        const snapshot = await db.collection("updateLogs")
+            .where("timestamp", "<", cutoff)
+            .orderBy("timestamp", "asc")
+            .limit(batchSize)
+            .get();
+
+        if (snapshot.empty) break;
+
+        const batch = db.batch();
+        snapshot.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+
+        totalDeleted += snapshot.size;
+        console.log(`🗑️ Deleted ${snapshot.size} updateLogs (total ${totalDeleted})`);
+
+        if (snapshot.size < batchSize) break;
+      }
+
+      return null;
+    },
+);
+
 exports.updateUserCollectionV2 = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User not logged in");
@@ -946,12 +981,33 @@ exports.getUpdateLogsV2 = onCall(async (request) => {
   }
 
   const limit = Math.min(Math.max(request.data?.limit || 30, 1), 100);
+  const filters = request.data?.filters || {};
+  const startAfter = request.data?.startAfter || null;
 
   try {
-    const logsSnapshot = await db.collection("updateLogs")
+    let query = db.collection("updateLogs");
+
+    if (filters.userEmail) {
+      query = query.where("userEmail", "==", filters.userEmail);
+    }
+    if (filters.triggerType) {
+      query = query.where("triggerType", "==", filters.triggerType);
+    }
+    if (filters.pricingMode) {
+      query = query.where("pricingMode", "==", filters.pricingMode);
+    }
+
+    query = query
         .orderBy("timestamp", "desc")
-        .limit(limit)
-        .get();
+        .orderBy(admin.firestore.FieldPath.documentId(), "desc")
+        .limit(limit);
+
+    if (startAfter?.timestamp && startAfter?.id) {
+      const ts = admin.firestore.Timestamp.fromDate(new Date(startAfter.timestamp));
+      query = query.startAfter(ts, startAfter.id);
+    }
+
+    const logsSnapshot = await query.get();
 
     const logs = logsSnapshot.docs.map((docSnap) => {
       const data = docSnap.data() || {};
@@ -972,7 +1028,16 @@ exports.getUpdateLogsV2 = onCall(async (request) => {
       };
     });
 
-    return {success: true, logs};
+    const lastDoc = logsSnapshot.docs[logsSnapshot.docs.length - 1] || null;
+    const lastData = lastDoc?.data?.() || null;
+    const nextPageToken = lastDoc
+      ? {
+        id: lastDoc.id,
+        timestamp: lastData?.timestamp?.toDate?.().toISOString?.() || null,
+      }
+      : null;
+
+    return {success: true, logs, nextPageToken};
   } catch (error) {
     console.error("Error loading update logs:", error);
     throw new HttpsError("internal", error.message);

@@ -1,11 +1,11 @@
 {
-  "name": "Hockey Cards Collection",
-  "short_name": "HockeyCards",
-  "description": "Správa zbierky hokejových kariet s automatickou aktualizáciou cien",
+  "name": "AssetTide",
+  "short_name": "AssetTide",
+  "description": "Správa zbierky s automatickou aktualizáciou cien",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#667eea",
+  "theme_color": "#4ecdc4",
   "orientation": "portrait-primary",
   "icons": [
     {

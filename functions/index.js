@@ -79,6 +79,7 @@ async function fetchEcbRate(currency) {
  * @return {Object} Update results
  */
 async function updateUserCollection(userId, options = {}) {
+  const updateStartTime = Date.now();
   console.log(`🔄 Starting collection update for user: ${userId}`);
 
   const fxRates = await getLatestExchangeRates();
@@ -116,261 +117,340 @@ async function updateUserCollection(userId, options = {}) {
     total: cards.length,
     cardsProcessed: cards.length,
   }).catch(() => {
-    // Status doc might not exist if called from scheduled task
     console.log("Status document not found - skipping status updates");
   });
 
   let successCount = 0;
   let failCount = 0;
   let apiCallsUsed = 0;
+  let cacheHits = 0;
   const errors = [];
   const debugSamples = [];
   const DEBUG_SAMPLE_LIMIT = 20;
+  const duplicateQueryWarnings = [];
 
-  // Batch processing
-  const BATCH_SIZE = 20;
-  const BATCH_PAUSE_MS = 10000; // 10s between batches
+  // Query-level cache: reuse results for identical text queries within this run
+  const textQueryCache = new Map();
+  const textQueryCardCount = new Map();
 
-  for (let i = 0; i < cards.length; i += BATCH_SIZE) {
-    const batch = cards.slice(i, Math.min(i + BATCH_SIZE, cards.length));
+  // Batch processing — parallel within batches
+  const BATCH_SIZE = 5;
+  const BATCH_PAUSE_MS = 2000; // 2s between batches
 
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    const totalBatches = Math.ceil(cards.length / BATCH_SIZE);
-    console.log(`📦 Processing batch ${batchNum}/${totalBatches} (${batch.length} cards)`);
+  /**
+   * Process a single card — extracted to enable parallel execution
+   */
+  async function processCard(cardDoc) {
+    const cardStartTime = Date.now();
+    const card = cardDoc.data();
+    const cardId = cardDoc.id;
 
-    // Check remaining budget
-    const remainingBudget = globalLimiter.getRemainingBudget();
-    if (remainingBudget < 10) {
-      console.warn(`⚠️  Low budget warning: ${remainingBudget} calls remaining`);
+    const debugEntry = {
+      cardId,
+      cardName: card.item,
+      mode: pricingMode,
+      input: {},
+      search: null,
+      pricing: null,
+      topResults: [],
+      outcome: null,
+      error: null,
+      warnings: [],
+      durationMs: 0,
+    };
 
-      if (remainingBudget === 0) {
-        console.error("🚫 Daily budget exhausted, stopping updates");
-        errors.push({cardId: "budget_exceeded", error: "Daily API budget exhausted"});
-        break;
-      }
-    }
+    try {
+      let results = [];
+      let textResponse = null;
+      let imageResponse = null;
+      const imageUrl = typeof card.imageUrl === "string" ? card.imageUrl.trim() : "";
 
-    for (const cardDoc of batch) {
-      const card = cardDoc.data();
-      const cardId = cardDoc.id;
+      if (usingTextMode || usingHybridMode) {
+        try {
+          debugEntry.input.name = card.item;
+          const cacheKey = (card.item || "").toLowerCase().trim();
 
-      const debugEntry = {
-        cardId,
-        cardName: card.item,
-        mode: pricingMode,
-        input: {},
-        search: null,
-        pricing: null,
-        topResults: [],
-        outcome: null,
-        error: null,
-        warnings: [],
-      };
-
-      try {
-        let results = [];
-        let textResponse = null;
-        let imageResponse = null;
-        const imageUrl = typeof card.imageUrl === "string" ? card.imageUrl.trim() : "";
-
-        if (usingTextMode || usingHybridMode) {
-          try {
+          if (textQueryCache.has(cacheKey)) {
+            console.log(`🔍 Text search (cached): ${card.item}`);
+            textResponse = textQueryCache.get(cacheKey);
+            textQueryCardCount.set(cacheKey, (textQueryCardCount.get(cacheKey) || 1) + 1);
+            debugEntry.warnings.push("Text results reused from cache — consider adding year/edition to card name for unique pricing");
+            cacheHits++;
+          } else {
             console.log(`🔍 Text search: ${card.item}`);
-            debugEntry.input.name = card.item;
             textResponse = await searchEbayCardWithDebug(card.item, fxRates);
             apiCallsUsed += textResponse?.debug?.apiCalls || 0;
+            textQueryCache.set(cacheKey, textResponse);
+            textQueryCardCount.set(cacheKey, 1);
+          }
+        } catch (error) {
+          if (usingTextMode && !usingHybridMode) {
+            throw error;
+          }
+          debugEntry.warnings.push(`Text search failed: ${error.message}`);
+        }
+      }
+
+      if (usingImageMode || usingHybridMode) {
+        debugEntry.input.imageUrl = imageUrl || null;
+        if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+          if (usingImageMode && !usingHybridMode) {
+            console.log(`  ⚠ ${card.item}: Missing image for image-based pricing`);
+            debugEntry.outcome = "missing-image";
+            debugEntry.durationMs = Date.now() - cardStartTime;
+            return {debugEntry, success: false, error: "Missing image for image-based pricing"};
+          }
+          debugEntry.warnings.push("Missing image for image-based pricing");
+        } else {
+          try {
+            console.log(`🖼️  Image search: ${card.item}`);
+            imageResponse = await searchEbayCardByImageWithDebug(imageUrl, card.item, fxRates);
+            apiCallsUsed += imageResponse?.debug?.apiCalls || 0;
           } catch (error) {
-            if (usingTextMode && !usingHybridMode) {
+            if (usingImageMode && !usingHybridMode) {
               throw error;
             }
-            debugEntry.warnings.push(`Text search failed: ${error.message}`);
+            debugEntry.warnings.push(`Image search failed: ${error.message}`);
           }
-        }
-
-        if (usingImageMode || usingHybridMode) {
-          debugEntry.input.imageUrl = imageUrl || null;
-          if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
-            if (usingImageMode && !usingHybridMode) {
-              console.log(`  ⚠ ${card.item}: Missing image for image-based pricing`);
-              failCount++;
-              errors.push({cardId, cardName: card.item, error: "Missing image for image-based pricing"});
-              debugEntry.outcome = "missing-image";
-              await statusRef.update({
-                successCount,
-                failCount,
-                progress: successCount + failCount,
-              }).catch(() => { /* Ignore if status doc doesn't exist */ });
-              if (debugSamples.length < DEBUG_SAMPLE_LIMIT) debugSamples.push(debugEntry);
-              continue;
-            }
-            debugEntry.warnings.push("Missing image for image-based pricing");
-          } else {
-            try {
-              console.log(`🖼️  Image search: ${card.item}`);
-              imageResponse = await searchEbayCardByImageWithDebug(imageUrl, card.item, fxRates);
-              apiCallsUsed += imageResponse?.debug?.apiCalls || 0;
-            } catch (error) {
-              if (usingImageMode && !usingHybridMode) {
-                throw error;
-              }
-              debugEntry.warnings.push(`Image search failed: ${error.message}`);
-            }
-          }
-        }
-
-        if (usingHybridMode) {
-          const textResults = textResponse?.results || [];
-          const imageResults = imageResponse?.results || [];
-          const merged = new Map();
-          const addResult = (item, source) => {
-            const key = item.id || `${item.title}-${item.price}`;
-            const existing = merged.get(key);
-            if (!existing) {
-              merged.set(key, {...item, sources: [source]});
-              return;
-            }
-            existing.sources = Array.from(new Set([...(existing.sources || []), source]));
-            const score = typeof item.matchScore === "number" ? item.matchScore : null;
-            if (score != null) {
-              const prev = typeof existing.matchScore === "number" ? existing.matchScore : null;
-              if (prev == null || score > prev) {
-                existing.matchScore = score;
-              }
-            }
-          };
-
-          textResults.forEach((item) => addResult(item, "text"));
-          imageResults.forEach((item) => addResult(item, "image"));
-          results = Array.from(merged.values());
-
-          debugEntry.search = {
-            text: textResponse?.debug || null,
-            image: imageResponse?.debug || null,
-            combinedCount: results.length,
-          };
-        } else if (usingImageMode) {
-          results = imageResponse?.results || [];
-          debugEntry.search = imageResponse?.debug || null;
-        } else {
-          results = textResponse?.results || [];
-          debugEntry.search = textResponse?.debug || null;
-        }
-
-        debugEntry.apiCalls = (textResponse?.debug?.apiCalls || 0) + (imageResponse?.debug?.apiCalls || 0);
-
-        debugEntry.topResults = results.slice(0, 3).map((item) => ({
-          title: item.title,
-          price: item.price,
-          matchScore: typeof item.matchScore === "number" ? Number(item.matchScore.toFixed(3)) : null,
-          isAuctionOnly: !!item.isAuctionOnly,
-          bidCount: item.bidCount || 0,
-        }));
-
-        if (results.length > 0) {
-          const priceInfo = calculateEstimatedPriceDetailed(results);
-          const estimatedPrice = priceInfo?.price || null;
-          debugEntry.pricing = priceInfo?.debug || null;
-          debugEntry.estimatedPrice = estimatedPrice;
-
-          if (estimatedPrice) {
-            // Create price history entry with actual Date (serverTimestamp cannot be used in arrays)
-            const priceHistoryEntry = {
-              date: new Date(),
-              price: estimatedPrice,
-              source: "ebay",
-            };
-
-            // Update card with price and append to history
-            await cardDoc.ref.update({
-              current: estimatedPrice,
-              lastPriceUpdate: admin.firestore.FieldValue.serverTimestamp(),
-              priceSource: "ebay",
-              ebayPriceSource: true, // Flag for UI to show eBay badge
-              ebaySearchMode: pricingMode,
-              priceHistory: admin.firestore.FieldValue.arrayUnion(priceHistoryEntry),
-            });
-
-            console.log(`  ✓ ${card.item}: $${estimatedPrice}`);
-            debugEntry.outcome = "updated";
-            successCount++;
-          } else {
-            console.log(`  ⚠ ${card.item}: Cannot calculate price`);
-            failCount++;
-            errors.push({cardId, cardName: card.item, error: "Cannot calculate price"});
-            debugEntry.outcome = "no-price";
-          }
-        } else {
-          console.log(`  ✗ ${card.item}: No eBay results`);
-          failCount++;
-          errors.push({cardId, cardName: card.item, error: "No eBay results"});
-          debugEntry.outcome = "no-results";
-        }
-
-        // Update status after each card
-        await statusRef.update({
-          successCount,
-          failCount,
-          progress: successCount + failCount,
-        }).catch(() => { /* Ignore if status doc doesn't exist */ });
-
-      } catch (error) {
-        console.error(`  ❌ Error updating card ${cardId}:`, error.message);
-        failCount++;
-        errors.push({cardId, cardName: card.item, error: error.message});
-        debugEntry.outcome = "error";
-        debugEntry.error = error.message;
-
-        // Update status after error
-        await statusRef.update({
-          successCount,
-          failCount,
-          progress: successCount + failCount,
-        }).catch(() => { /* Ignore if status doc doesn't exist */ });
-
-        // If rate limit error, add extra pause
-        if (error.message.includes("Rate limit") || error.message.includes("429")) {
-          console.log("  ⏸️  Rate limit detected, pausing 60s...");
-          await new Promise((resolve) => setTimeout(resolve, 60000));
         }
       }
 
-      if (debugSamples.length < DEBUG_SAMPLE_LIMIT) {
-        debugSamples.push(debugEntry);
-      }
-    }
+      if (usingHybridMode) {
+        const textResults = textResponse?.results || [];
+        const imageResults = imageResponse?.results || [];
+        const merged = new Map();
+        const addResult = (item, source) => {
+          const key = item.id || `${item.title}-${item.price}`;
+          const existing = merged.get(key);
+          if (!existing) {
+            merged.set(key, {...item, sources: [source]});
+            return;
+          }
+          existing.sources = Array.from(new Set([...(existing.sources || []), source]));
+          const score = typeof item.matchScore === "number" ? item.matchScore : null;
+          if (score != null) {
+            const prev = typeof existing.matchScore === "number" ? existing.matchScore : null;
+            if (prev == null || score > prev) {
+              existing.matchScore = score;
+            }
+          }
+        };
 
-    // Pause between batches
-    if (i + BATCH_SIZE < cards.length) {
-      console.log(`⏸️  Batch complete. Pausing ${BATCH_PAUSE_MS / 1000}s...`);
-      await new Promise((resolve) => setTimeout(resolve, BATCH_PAUSE_MS));
+        textResults.forEach((item) => addResult(item, "text"));
+        imageResults.forEach((item) => addResult(item, "image"));
+        results = Array.from(merged.values());
+
+        debugEntry.search = {
+          text: textResponse?.debug || null,
+          image: imageResponse?.debug || null,
+          combinedCount: results.length,
+        };
+      } else if (usingImageMode) {
+        results = imageResponse?.results || [];
+        debugEntry.search = imageResponse?.debug || null;
+      } else {
+        results = textResponse?.results || [];
+        debugEntry.search = textResponse?.debug || null;
+      }
+
+      debugEntry.apiCalls = (textResponse?.debug?.apiCalls || 0) + (imageResponse?.debug?.apiCalls || 0);
+
+      debugEntry.topResults = results.slice(0, 3).map((item) => ({
+        title: item.title,
+        price: item.price,
+        matchScore: typeof item.matchScore === "number" ? Number(item.matchScore.toFixed(3)) : null,
+        isAuctionOnly: !!item.isAuctionOnly,
+        bidCount: item.bidCount || 0,
+      }));
+
+      if (results.length > 0) {
+        const priceInfo = calculateEstimatedPriceDetailed(results);
+        const estimatedPrice = priceInfo?.price || null;
+        const priceConfidence = priceInfo?.confidence || null;
+        debugEntry.pricing = priceInfo?.debug || null;
+        debugEntry.estimatedPrice = estimatedPrice;
+
+        if (estimatedPrice) {
+          const previousPrice = parseFloat(card.current) || 0;
+          const priceRatio = previousPrice > 0 ? estimatedPrice / previousPrice : 1;
+
+          // Price drop protection
+          if (previousPrice > 0 && priceRatio < 0.2) {
+            console.log(`  ⚠ ${card.item}: Price drop blocked (€${previousPrice} → €${estimatedPrice}, ${(priceRatio * 100).toFixed(0)}%)`);
+            debugEntry.outcome = "price-drop-blocked";
+            debugEntry.warnings.push(`Price drop ${(priceRatio * 100).toFixed(0)}% blocked (${previousPrice} → ${estimatedPrice})`);
+            debugEntry.durationMs = Date.now() - cardStartTime;
+            return {debugEntry, success: false, error: `Price drop blocked: €${previousPrice} → €${estimatedPrice}`};
+          }
+
+          // Build update data
+          const priceHistoryEntry = {
+            date: new Date(),
+            price: estimatedPrice,
+            source: "ebay",
+          };
+
+          const updateData = {
+            current: estimatedPrice,
+            lastPriceUpdate: admin.firestore.FieldValue.serverTimestamp(),
+            priceSource: "ebay",
+            ebayPriceSource: true,
+            ebaySearchMode: pricingMode,
+            priceHistory: admin.firestore.FieldValue.arrayUnion(priceHistoryEntry),
+          };
+
+          if (priceConfidence != null) {
+            updateData.priceConfidence = priceConfidence;
+          }
+
+          // Price drop alert (50-80% drop) or spike alert (>300% rise)
+          if (previousPrice > 0 && priceRatio < 0.5) {
+            updateData.priceDropAlert = true;
+            updateData.priceDropPct = parseFloat(((1 - priceRatio) * 100).toFixed(1));
+            console.log(`  ⚠ ${card.item}: Price drop alert (${((1 - priceRatio) * 100).toFixed(0)}%)`);
+          } else if (previousPrice > 0 && priceRatio > 3.0) {
+            updateData.priceSpikeAlert = true;
+            updateData.priceSpikePct = parseFloat(((priceRatio - 1) * 100).toFixed(1));
+            console.log(`  ⚠ ${card.item}: Price spike alert (${((priceRatio - 1) * 100).toFixed(0)}%)`);
+          } else {
+            updateData.priceDropAlert = false;
+            updateData.priceSpikeAlert = false;
+          }
+
+          await cardDoc.ref.update(updateData);
+
+          const cardDuration = Date.now() - cardStartTime;
+          console.log(`  ✓ ${card.item}: €${estimatedPrice} (confidence: ${priceConfidence}%) [${(cardDuration / 1000).toFixed(1)}s]`);
+          debugEntry.outcome = "updated";
+          debugEntry.durationMs = cardDuration;
+          return {debugEntry, success: true};
+        } else {
+          debugEntry.outcome = "no-price";
+          debugEntry.durationMs = Date.now() - cardStartTime;
+          return {debugEntry, success: false, error: "Cannot calculate price"};
+        }
+      } else {
+        console.log(`  ✗ ${card.item}: No eBay results`);
+        debugEntry.outcome = "no-results";
+        debugEntry.durationMs = Date.now() - cardStartTime;
+        return {debugEntry, success: false, error: "No eBay results"};
+      }
+    } catch (error) {
+      console.error(`  ❌ Error updating card ${cardId}:`, error.message);
+      debugEntry.outcome = "error";
+      debugEntry.error = error.message;
+      debugEntry.durationMs = Date.now() - cardStartTime;
+
+      // If rate limit error, add extra pause
+      if (error.message.includes("Rate limit") || error.message.includes("429")) {
+        console.log("  ⏸️  Rate limit detected, pausing 60s...");
+        await new Promise((resolve) => setTimeout(resolve, 60000));
+      }
+
+      return {debugEntry, success: false, error: error.message};
     }
   }
 
-  // Create update log
-  const logRef = await db.collection("updateLogs").add({
-    userId,
-    userEmail: userData?.email || null,
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    totalCards: cards.length,
-    successCount,
-    failCount,
-    errors: errors.slice(0, 10), // First 10 errors only
-    apiCallsUsed,
-    status: failCount === 0 ? "success" : (successCount > 0 ? "partial" : "failed"),
-    triggerType,
-    pricingMode,
-    debugSamples,
-  });
+  // Main processing loop — try/finally ensures log is always saved
+  try {
+    for (let i = 0; i < cards.length; i += BATCH_SIZE) {
+      const batch = cards.slice(i, Math.min(i + BATCH_SIZE, cards.length));
 
-  // Create notification for user
-  await createUserNotification(userId, {
-    id: logRef.id,
-    totalCards: cards.length,
-    successCount,
-    failCount,
-  });
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(cards.length / BATCH_SIZE);
+      const batchStartTime = Date.now();
+      console.log(`📦 Batch ${batchNum}/${totalBatches} (${batch.length} cards)`);
 
-  console.log(`✅ Collection update complete for user ${userId}: ${successCount} success, ${failCount} failed`);
+      // Check remaining budget
+      const remainingBudget = globalLimiter.getRemainingBudget();
+      if (remainingBudget < 10) {
+        console.warn(`⚠️  Low budget warning: ${remainingBudget} calls remaining`);
+        if (remainingBudget === 0) {
+          console.error("🚫 Daily budget exhausted, stopping updates");
+          errors.push({cardId: "budget_exceeded", error: "Daily API budget exhausted"});
+          break;
+        }
+      }
+
+      // Process cards in parallel within batch
+      const batchResults = await Promise.all(batch.map((cardDoc) => processCard(cardDoc)));
+
+      for (const result of batchResults) {
+        if (result.success) {
+          successCount++;
+        } else {
+          failCount++;
+          if (result.error) {
+            errors.push({
+              cardId: result.debugEntry.cardId,
+              cardName: result.debugEntry.cardName,
+              error: result.error,
+            });
+          }
+        }
+        if (debugSamples.length < DEBUG_SAMPLE_LIMIT) {
+          debugSamples.push(result.debugEntry);
+        }
+      }
+
+      // Update progress after each batch
+      await statusRef.update({
+        successCount,
+        failCount,
+        progress: successCount + failCount,
+      }).catch(() => {});
+
+      const batchDuration = ((Date.now() - batchStartTime) / 1000).toFixed(1);
+      const elapsed = ((Date.now() - updateStartTime) / 1000).toFixed(0);
+      console.log(`  ⏱️  Batch ${batchNum} done in ${batchDuration}s (total: ${elapsed}s, ${successCount + failCount}/${cards.length} cards)`);
+
+      // Pause between batches
+      if (i + BATCH_SIZE < cards.length) {
+        await new Promise((resolve) => setTimeout(resolve, BATCH_PAUSE_MS));
+      }
+    }
+  } finally {
+    // Always save update log, even if processing was interrupted
+    const totalDurationMs = Date.now() - updateStartTime;
+    const totalDurationS = (totalDurationMs / 1000).toFixed(1);
+
+    // Collect duplicate query warnings
+    for (const [query, count] of textQueryCardCount.entries()) {
+      if (count > 1) {
+        duplicateQueryWarnings.push({query, cardCount: count});
+        console.log(`⚠️  ${count} cards share identical query "${query}" — add year/edition for unique pricing`);
+      }
+    }
+
+    const logData = {
+      userId,
+      userEmail: userData?.email || null,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      totalCards: cards.length,
+      successCount,
+      failCount,
+      errors: errors.slice(0, 10),
+      apiCallsUsed,
+      cacheHits,
+      status: failCount === 0 ? "success" : (successCount > 0 ? "partial" : "failed"),
+      triggerType,
+      pricingMode,
+      durationMs: totalDurationMs,
+      debugSamples,
+      duplicateQueryWarnings: duplicateQueryWarnings.length ? duplicateQueryWarnings : null,
+    };
+
+    const logRef = await db.collection("updateLogs").add(logData);
+
+    await createUserNotification(userId, {
+      id: logRef.id,
+      totalCards: cards.length,
+      successCount,
+      failCount,
+    });
+
+    console.log(`✅ Update complete for ${userId}: ${successCount}/${cards.length} success, ${failCount} failed, ${apiCallsUsed} API calls, ${cacheHits} cache hits, ${totalDurationS}s`);
+  }
 
   return {
     success: true,
@@ -767,7 +847,9 @@ exports.cleanupUpdateLogsV2 = onSchedule(
     },
 );
 
-exports.updateUserCollectionV2 = onCall(async (request) => {
+exports.updateUserCollectionV2 = onCall(
+    {timeoutSeconds: 3600, memory: "1GiB", cpu: 1},
+    async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User not logged in");
   }
@@ -827,30 +909,35 @@ exports.updateUserCollectionV2 = onCall(async (request) => {
       lastManualUpdate: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    updateUserCollection(targetUserId, {triggerType: "manual"})
-        .then(async (result) => {
-          await statusRef.update({
-            status: "completed",
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
-            successCount: result.successCount || 0,
-            failCount: result.failCount || 0,
-            cardsProcessed: result.cardsProcessed || 0,
-            apiCallsUsed: result.apiCallsUsed || 0,
-          });
-          console.log(`✅ Background update completed for user ${targetUserId}`);
-        })
-        .catch(async (error) => {
-          console.error("Background update error:", error);
-          await statusRef.update({
-            status: "error",
-            completedAt: admin.firestore.FieldValue.serverTimestamp(),
-            error: error.message || "Unknown error",
-          });
-        });
+    // Await keeps the Cloud Run instance alive for the full timeoutSeconds: 3600
+    // Client may get deadline-exceeded on their side, but that's OK —
+    // admin panel tracks progress via onSnapshot on updateStatus doc
+    let result;
+    try {
+      result = await updateUserCollection(targetUserId, {triggerType: "manual"});
+      await statusRef.update({
+        status: "completed",
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        successCount: result.successCount || 0,
+        failCount: result.failCount || 0,
+        cardsProcessed: result.cardsProcessed || 0,
+        apiCallsUsed: result.apiCallsUsed || 0,
+      });
+      console.log(`✅ Update completed for user ${targetUserId}`);
+    } catch (updateError) {
+      console.error("Update error:", updateError);
+      await statusRef.update({
+        status: "error",
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        error: updateError.message || "Unknown error",
+      });
+    }
 
     return {
       success: true,
-      message: "Update started in background. Check status for progress.",
+      message: result
+        ? `Update completed: ${result.successCount} success, ${result.failCount} failed`
+        : "Update finished with errors. Check logs.",
       statusDocId: targetUserId,
     };
   } catch (error) {
@@ -1023,6 +1110,8 @@ exports.getUpdateLogsV2 = onCall(async (request) => {
         triggerType: data.triggerType || null,
         pricingMode: data.pricingMode || null,
         apiCallsUsed: data.apiCallsUsed ?? null,
+        cacheHits: data.cacheHits ?? 0,
+        durationMs: data.durationMs ?? null,
         errors: data.errors || [],
         debugSamples: data.debugSamples || [],
       };

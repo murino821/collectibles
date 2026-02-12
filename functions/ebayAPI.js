@@ -27,10 +27,38 @@ const HOCKEY_CARDS_CATEGORY = "261328"; // Sports Trading Card Singles
 const EBAY_MARKETPLACE = "EBAY_US"; // US marketplace has most hockey cards
 
 const MAX_QUERY_LENGTH = 100;
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 200;
 const MIN_RESULTS_TARGET = 8;
 const MAX_QUERY_ATTEMPTS = 3;
 const AUCTION_FLOOR_HOURS = 48;
+
+// NHL player lookup for first name disambiguation (BOD 9)
+const NHL_PLAYER_NAMES = {
+  mcdavid: "connor", crosby: "sidney", ovechkin: ["alexander", "alex"],
+  gretzky: "wayne", lemieux: "mario", matthews: "auston", draisaitl: "leon",
+  mackinnon: "nathan", makar: "cale", bedard: "connor", kaprizov: "kirill",
+  pastrnak: "david", kucherov: "nikita", vasilevskiy: "andrei",
+  panarin: "artemi", marchand: "brad", rantanen: "mikko", hellebuyck: "connor",
+  mcdonald: null, // common false positive — not NHL
+  hedman: "victor", fox: "adam", josi: "roman", marner: "mitch",
+  tkachuk: ["matthew", "brady"], hughes: ["jack", "quinn", "luke"],
+  svechnikov: "andrei", barkov: "aleksander", huberdeau: "jonathan",
+  gaudreau: "johnny", pettersson: "elias", zegras: "trevor",
+  seider: "moritz", raymond: "lucas", robertson: "jason",
+  stutzle: "tim", demko: "thatcher", oettinger: "jake",
+  caufield: "cole", suzuki: "nick", slavin: "jaccob",
+  mcavoy: "charlie", zibanejad: "mika", kreider: "chris",
+  shesterkin: "igor", saros: "juuse", sorokin: "ilya",
+  fehervary: "martin", hischier: "nico", lafreniere: "alexis",
+  byfield: "quinton", dach: "kirby", debrincat: "alex",
+  duclair: "anthony", eichel: "jack", forsberg: "filip",
+  giroux: "claude", hintz: "roope", jarvis: "seth",
+  johnson: null, jones: null, smith: null, miller: null, // too common
+  landeskog: "gabriel", lindholm: "elias", meier: "timo",
+  norris: "josh", nylander: "william", oconnor: null, point: "brayden",
+  rielly: "morgan", aho: "sebastian", terravainen: "teuvo",
+  toews: "jonathan", trocheck: "vincent",
+};
 
 const STOP_WORDS = new Set([
   "nhl",
@@ -93,9 +121,9 @@ const STRONG_PHRASES = new Set([
 const EXCLUDE_REGEXES = [
   /\blot\b/,
   /\blots\b/,
-  /\bu[-\s]?pick\b/,
+  /u[\s-]*pick/,
   /\bupick\b/,
-  /\bpick (from|your)\b/,
+  /\bpick\s+(from|your|a)\b/,
   /\b(you choose|choose from|your choice)\b/,
   /\b(complete|team|base|master) set\b/,
   /\b(hobby|blaster|mega)?\s*box\b/,
@@ -108,6 +136,10 @@ const EXCLUDE_REGEXES = [
   /\b(reprint|replica)\b/,
   /\b(case break|box break|group break|breakers?)\b/,
 ];
+
+// Variant keywords that indicate a different card variant
+const VARIANT_PENALTY_KEYWORDS = ["renewed", "retro", "tribute", "throwback"];
+const AUTOGRAPH_KEYWORDS = ["auto", "autograph", "autographed", "signature", "signed"];
 
 // Token cache (in-memory for function lifetime)
 let cachedToken = null;
@@ -202,9 +234,21 @@ async function getEbayToken() {
   }
 }
 
-function normalizeText(value) {
+function sanitizeUtf8(value) {
   if (!value) return "";
   return value
+    .replace(/â€"/g, "-").replace(/â€™/g, "'").replace(/â€œ/g, "\"").replace(/â€\u009D/g, "\"")
+    .replace(/Ã©/g, "e").replace(/Ã¡/g, "a").replace(/Ã­/g, "i").replace(/Ã³/g, "o").replace(/Ãº/g, "u")
+    .replace(/Ã¤/g, "a").replace(/Ã¶/g, "o").replace(/Ã¼/g, "u")
+    .replace(/â/g, " ")
+    .replace(/[\u0080-\u009F]/g, "")
+    .replace(/[\uFFFD]/g, "")
+    .trim();
+}
+
+function normalizeText(value) {
+  if (!value) return "";
+  return sanitizeUtf8(value)
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -213,6 +257,15 @@ function normalizeText(value) {
     .replace(/[^a-z0-9\s\/#-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isMultiPlayerListing(normalizedTitle) {
+  const knownPlayers = Object.keys(NHL_PLAYER_NAMES);
+  const found = knownPlayers.filter((name) => {
+    const regex = new RegExp(`\\b${name}\\b`);
+    return regex.test(normalizedTitle);
+  });
+  return found.length >= 3;
 }
 
 function tokenize(value) {
@@ -327,11 +380,25 @@ function extractSignals(cardName) {
     return true;
   });
 
+  const hasAutograph = AUTOGRAPH_KEYWORDS.some((kw) => normalized.includes(kw));
+  const hasVariant = (keyword) => normalized.includes(keyword);
+  const sourceVariants = VARIANT_PENALTY_KEYWORDS.filter((kw) => hasVariant(kw));
+
+  // Resolve first name from NHL_PLAYER_NAMES lookup
+  let playerFirstName = null;
+  if (playerKeyToken && NHL_PLAYER_NAMES[playerKeyToken] !== undefined) {
+    const firstName = NHL_PLAYER_NAMES[playerKeyToken];
+    if (firstName) {
+      playerFirstName = Array.isArray(firstName) ? firstName : [firstName];
+    }
+  }
+
   return {
     normalized,
     playerTokens,
     hasStrongPlayerTokens,
     playerKeyToken,
+    playerFirstName,
     keyTokens,
     year,
     yearRange,
@@ -339,6 +406,8 @@ function extractSignals(cardName) {
     serial,
     grade,
     phrases,
+    hasAutograph,
+    sourceVariants,
   };
 }
 
@@ -386,15 +455,21 @@ function buildSearchQueries(signals) {
   const yearToken = signals.yearRange || signals.year || null;
   const phraseTokens = signals.phrases || [];
   const gradeTokens = signals.grade ? signals.grade.split(" ") : [];
+
+  // Add first name for disambiguation if available
+  const playerParts = signals.playerFirstName
+    ? [signals.playerFirstName[0], ...signals.playerTokens]
+    : [...signals.playerTokens];
+
   const strict = buildQueryString([
-    ...signals.playerTokens,
+    ...playerParts,
     yearToken,
     ...phraseTokens,
     signals.cardNumber,
     ...gradeTokens,
   ]);
   const balanced = buildQueryString([
-    ...signals.playerTokens,
+    ...playerParts,
     yearToken,
     ...phraseTokens,
     "card",
@@ -507,7 +582,41 @@ function computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals) {
 
   signals.keyTokens.forEach((token) => addScore(1, titleTokens.has(token)));
 
-  return maxScore > 0 ? score / maxScore : 0;
+  let baseScore = maxScore > 0 ? score / maxScore : 0;
+
+  // Variant penalty: listing has "renewed/retro" but source card does not
+  VARIANT_PENALTY_KEYWORDS.forEach((variant) => {
+    const listingHas = normalizedTitle.includes(variant);
+    const sourceHas = signals.sourceVariants && signals.sourceVariants.includes(variant);
+    if (listingHas && !sourceHas) {
+      const penalty = variant === "renewed" ? 0.4 : 0.3;
+      baseScore *= (1 - penalty);
+    }
+  });
+
+  // Autograph mismatch penalty
+  const listingHasAuto = AUTOGRAPH_KEYWORDS.some((kw) => normalizedTitle.includes(kw));
+  if (signals.hasAutograph && !listingHasAuto) {
+    baseScore *= 0.6;
+  } else if (!signals.hasAutograph && listingHasAuto) {
+    baseScore *= 0.7;
+  }
+
+  // Wrong first name penalty
+  if (signals.playerFirstName && signals.playerKeyToken && titleTokens.has(signals.playerKeyToken)) {
+    const allFirstNames = Object.values(NHL_PLAYER_NAMES)
+        .filter(Boolean)
+        .flatMap((v) => Array.isArray(v) ? v : [v]);
+    const titleFirstNames = allFirstNames.filter((fn) => titleTokens.has(fn));
+    if (titleFirstNames.length > 0) {
+      const matchesExpected = titleFirstNames.some((fn) => signals.playerFirstName.includes(fn));
+      if (!matchesExpected) {
+        baseScore *= 0.2;
+      }
+    }
+  }
+
+  return baseScore;
 }
 
 function computeMatchScore(title, signals) {
@@ -569,6 +678,9 @@ function filterRelevantResults(results, signals, mode) {
   });
 
   let filtered = scored.filter((item) => !item._excluded);
+
+  // Multi-player listing detection (3+ known NHL players = lot/u-pick)
+  filtered = filtered.filter((item) => !isMultiPlayerListing(item._normalizedTitle));
 
   if (signals?.hasStrongPlayerTokens && signals.playerKeyToken) {
     const requiredMatches = filtered.filter((item) => item._titleTokens.has(signals.playerKeyToken));
@@ -634,13 +746,14 @@ async function searchEbayTextOnceDetailed(query, fxRates, options = {}) {
 
   const useEndDateFilter = options.useEndDateFilter !== false;
   const autoCorrect = options.autoCorrect || null;
+  const sortOrder = options.sort || "price";
 
   const params = new URLSearchParams({
     q: query,
     limit: String(DEFAULT_LIMIT),
     fieldgroups: "EXTENDED",
     category_ids: HOCKEY_CARDS_CATEGORY,
-    sort: "price",
+    sort: sortOrder,
   });
 
   if (useEndDateFilter) {
@@ -775,7 +888,8 @@ async function searchEbayCardWithDebug(cardName, fxRates = null) {
     return {results: [], debug: {mode: "text", reason: "empty-name"}};
   }
 
-  const signals = extractSignals(cardName);
+  const sanitizedName = sanitizeUtf8(cardName);
+  const signals = extractSignals(sanitizedName);
   const queries = buildSearchQueries(signals);
   const queryStats = [];
 
@@ -802,14 +916,30 @@ async function searchEbayCardWithDebug(cardName, fxRates = null) {
     }
   };
 
+  // Phase A: ascending price (cheapest first)
   await runQueries(queries, {useEndDateFilter: true}, "A");
+
+  // Phase A2: descending price (most expensive first) — gives full price spectrum
+  const firstQuery = queries[0];
+  if (firstQuery && aggregated.length > 0) {
+    console.log(`eBay text search query: "${firstQuery}" (A-desc)`);
+    const {items: descItems, rawCount: descRaw} = await searchEbayTextOnceDetailed(
+        firstQuery, fxRates, {useEndDateFilter: true, sort: "-price"},
+    );
+    aggregated = mergeUniqueResults(aggregated, descItems);
+    queryStats.push({
+      query: firstQuery, rawCount: descRaw, mappedCount: descItems.length,
+      aggregatedCount: aggregated.length, phase: "A-desc",
+      options: {useEndDateFilter: true, sort: "-price"},
+    });
+  }
 
   if (!aggregated.length) {
     await runQueries(queries, {useEndDateFilter: false}, "B");
   }
 
   if (!aggregated.length) {
-    const rawQuery = buildQueryString([cardName]);
+    const rawQuery = buildQueryString([sanitizeUtf8(cardName)]);
     await runQueries([rawQuery], {useEndDateFilter: false, autoCorrect: "KEYWORD"}, "C");
   }
 
@@ -917,11 +1047,101 @@ function getAuctionFloor(results) {
 }
 
 /**
+ * Remove statistical outliers using IQR method
+ */
+function removeIqrOutliers(sortedPrices) {
+  if (sortedPrices.length < 4) return {cleaned: sortedPrices, outliersRemoved: 0};
+
+  const q1 = percentile(sortedPrices, 0.25);
+  const q3 = percentile(sortedPrices, 0.75);
+  const iqr = q3 - q1;
+
+  if (iqr <= 0) return {cleaned: sortedPrices, outliersRemoved: 0};
+
+  let multiplier = 1.5;
+  let cleaned = sortedPrices.filter((p) => p >= q1 - multiplier * iqr && p <= q3 + multiplier * iqr);
+
+  // If too aggressive, use wider fence
+  if (cleaned.length < 3 && sortedPrices.length >= 5) {
+    multiplier = 2.5;
+    cleaned = sortedPrices.filter((p) => p >= q1 - multiplier * iqr && p <= q3 + multiplier * iqr);
+  }
+
+  if (cleaned.length < 2) return {cleaned: sortedPrices, outliersRemoved: 0};
+
+  return {cleaned, outliersRemoved: sortedPrices.length - cleaned.length};
+}
+
+/**
+ * Calculate weighted average using match scores as weights
+ */
+function weightedAverage(items) {
+  if (!items.length) return 0;
+
+  let totalWeight = 0;
+  let weightedSum = 0;
+
+  items.forEach((item) => {
+    let weight = typeof item.matchScore === "number" ? Math.max(item.matchScore, 0.1) : 0.5;
+
+    // Cross-validated bonus (hybrid mode): items found by both text and image
+    if (Array.isArray(item.sources) && item.sources.includes("text") && item.sources.includes("image")) {
+      weight *= 2.0;
+    }
+
+    weightedSum += item.price * weight;
+    totalWeight += weight;
+  });
+
+  return totalWeight > 0 ? weightedSum / totalWeight : 0;
+}
+
+/**
+ * Calculate confidence score (0-100) for the price estimate
+ */
+function calculateConfidence(results, spreadRatio, serialFallback, gradeFallback) {
+  let confidence = 0;
+
+  // Factor 1: Number of results (30%)
+  const count = results.length;
+  const countScore = count >= 21 ? 100 : count >= 11 ? 80 : count >= 6 ? 60 : count >= 3 ? 40 : 20;
+  confidence += countScore * 0.3;
+
+  // Factor 2: Average match score (25%)
+  const matchScores = results.map((item) => item.matchScore).filter((s) => typeof s === "number");
+  const avgMatch = matchScores.length ? matchScores.reduce((s, v) => s + v, 0) / matchScores.length : 0;
+  confidence += (avgMatch * 100) * 0.25;
+
+  // Factor 3: Spread ratio (20%)
+  const spreadScore = spreadRatio < 0.2 ? 100 : spreadRatio < 0.5 ? 70 : spreadRatio < 1.0 ? 40 : 10;
+  confidence += spreadScore * 0.2;
+
+  // Factor 4: Serial/grade fallback (10%)
+  const fallbackScore = (serialFallback || gradeFallback) ? 30 : 100;
+  confidence += fallbackScore * 0.1;
+
+  // Factor 5: Hybrid cross-validation (15%)
+  const hasSources = results.some((item) => Array.isArray(item.sources));
+  if (hasSources) {
+    const crossValidated = results.filter(
+        (item) => Array.isArray(item.sources) && item.sources.includes("text") && item.sources.includes("image"),
+    ).length;
+    const crossPct = results.length > 0 ? crossValidated / results.length : 0;
+    const crossScore = crossPct > 0.5 ? 100 : crossPct > 0.3 ? 70 : crossPct > 0 ? 50 : 30;
+    confidence += crossScore * 0.15;
+  } else {
+    confidence += 50 * 0.15;
+  }
+
+  return Math.round(Math.min(100, Math.max(0, confidence)));
+}
+
+/**
  * Calculate realistic market price from ACTIVE listings
- * Uses dynamic discount based on data volume and price dispersion.
- * Auction listings only contribute to a conservative floor value.
+ * Uses IQR outlier removal, weighted median, dynamic discount,
+ * and hybrid cross-validation for maximum accuracy.
  * @param {Array} results - Results from searchEbayCard or searchEbayCardByImage
- * @return {number|null} Estimated realistic price in EUR
+ * @return {Object|null} {price, confidence, debug}
  */
 function calculateEstimatedPriceDetailed(results) {
   if (!results || results.length === 0) return null;
@@ -930,21 +1150,31 @@ function calculateEstimatedPriceDetailed(results) {
   const auctionFloor = getAuctionFloor(results);
 
   const baseResults = fixedResults.length ? fixedResults : results;
-  const prices = baseResults
+  const allPrices = baseResults
     .map((item) => item.price)
     .filter((price) => Number.isFinite(price))
     .sort((a, b) => a - b);
 
-  if (!prices.length) return {price: null, debug: {reason: "no-prices"}};
+  if (!allPrices.length) return {price: null, debug: {reason: "no-prices"}};
 
+  // IQR outlier removal
+  const {cleaned: prices, outliersRemoved} = removeIqrOutliers(allPrices);
+
+  // Trimmed mean after IQR cleaning
   const trimPercent = prices.length >= 8 ? 0.15 : prices.length >= 5 ? 0.1 : 0;
   const trimCount = Math.floor(prices.length * trimPercent);
   const trimmedPrices = trimCount > 0 ? prices.slice(trimCount, prices.length - trimCount) : prices;
 
   const median = percentile(prices, 0.5);
-  const baseAverage = trimmedPrices.length
-    ? trimmedPrices.reduce((sum, price) => sum + price, 0) / trimmedPrices.length
-    : median;
+
+  // Weighted average using match scores
+  const priceSet = new Set(trimmedPrices);
+  const weightedItems = baseResults.filter((item) => Number.isFinite(item.price) && priceSet.has(item.price));
+  const baseAverage = weightedItems.length >= 3
+    ? weightedAverage(weightedItems)
+    : (trimmedPrices.length
+      ? trimmedPrices.reduce((sum, price) => sum + price, 0) / trimmedPrices.length
+      : median);
 
   const q1 = percentile(prices, 0.25);
   const q3 = percentile(prices, 0.75);
@@ -963,15 +1193,14 @@ function calculateEstimatedPriceDetailed(results) {
   }
 
   const matchScores = results.map((item) => item.matchScore).filter((score) => typeof score === "number");
-  if (matchScores.length) {
-    const avgMatch = matchScores.reduce((sum, score) => sum + score, 0) / matchScores.length;
-    if (avgMatch < 0.3) {
-      discountPct += 0.05;
-    } else if (avgMatch < 0.4) {
-      discountPct += 0.03;
-    } else if (avgMatch > 0.7) {
-      discountPct -= 0.02;
-    }
+  const avgMatch = matchScores.length
+    ? matchScores.reduce((sum, score) => sum + score, 0) / matchScores.length : 0;
+  if (avgMatch < 0.3) {
+    discountPct += 0.05;
+  } else if (avgMatch < 0.4) {
+    discountPct += 0.03;
+  } else if (avgMatch > 0.7) {
+    discountPct -= 0.02;
   }
 
   const serialFallback = results.some((item) => item.serialFallback);
@@ -984,12 +1213,31 @@ function calculateEstimatedPriceDetailed(results) {
     discountPct += 0.05;
   }
 
+  // Hybrid cross-validation discount adjustment
+  const hasSources = results.some((item) => Array.isArray(item.sources));
+  let crossValidatedPct = 0;
+  if (hasSources) {
+    const crossValidated = results.filter(
+        (item) => Array.isArray(item.sources) && item.sources.includes("text") && item.sources.includes("image"),
+    ).length;
+    crossValidatedPct = results.length > 0 ? crossValidated / results.length : 0;
+    if (crossValidatedPct > 0.5) {
+      discountPct -= 0.05;
+    } else if (crossValidatedPct > 0.3) {
+      discountPct -= 0.03;
+    } else if (hasSources && crossValidatedPct === 0) {
+      discountPct += 0.05;
+    }
+  }
+
   discountPct = Math.min(Math.max(discountPct, 0.1), 0.55);
 
   const discountedPrice = baseAverage * (1 - discountPct);
   const finalPrice = auctionFloor ? Math.max(discountedPrice, auctionFloor) : discountedPrice;
 
-  console.log(`eBay pricing: ${prices.length} listings, discount ${(discountPct * 100).toFixed(0)}%`);
+  const confidence = calculateConfidence(results, spreadRatio, serialFallback, gradeFallback);
+
+  console.log(`eBay pricing: ${prices.length} listings (${outliersRemoved} outliers removed), discount ${(discountPct * 100).toFixed(0)}%, confidence ${confidence}%`);
   if (auctionFloor) {
     console.log(`Auction floor applied: €${auctionFloor.toFixed(2)}`);
   }
@@ -999,6 +1247,7 @@ function calculateEstimatedPriceDetailed(results) {
     fixedResults: fixedResults.length,
     auctionCandidates: results.filter((item) => item.isAuctionOnly).length,
     auctionFloor: auctionFloor ? parseFloat(auctionFloor.toFixed(2)) : null,
+    outliersRemoved,
     serialFallback,
     gradeFallback,
     priceStats: {
@@ -1012,13 +1261,13 @@ function calculateEstimatedPriceDetailed(results) {
       trimmedCount: trimmedPrices.length,
     },
     discountPct: parseFloat((discountPct * 100).toFixed(1)),
-    avgMatchScore: matchScores.length
-      ? parseFloat((matchScores.reduce((sum, score) => sum + score, 0) / matchScores.length).toFixed(3))
-      : null,
-    appliedFloor: !!auctionFloor,
+    avgMatchScore: avgMatch ? parseFloat(avgMatch.toFixed(3)) : null,
+    crossValidatedPct: hasSources ? parseFloat(crossValidatedPct.toFixed(3)) : null,
+    confidence,
+    appliedFloor: auctionFloor ? finalPrice === auctionFloor : false,
   };
 
-  return {price: parseFloat(finalPrice.toFixed(2)), debug};
+  return {price: parseFloat(finalPrice.toFixed(2)), confidence, debug};
 }
 
 function calculateEstimatedPrice(results) {

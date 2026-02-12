@@ -1,11 +1,11 @@
-# Hockey Cards Collection - robots.txt
-# https://your-card-collection-2026.web.app/
+# AssetTide - robots.txt
+# https://assetide.com/
 
 User-agent: *
 Allow: /
 
 # Sitemap location
-Sitemap: https://your-card-collection-2026.web.app/sitemap.xml
+Sitemap: https://assetide.com/sitemap.xml
 
 # Crawl-delay for respectful crawling
 Crawl-delay: 1
@@ -15,4 +15,3 @@ Disallow: /admin_panel.html
 Disallow: /admin_logs.html
 Disallow: /update_schedule.html
 Disallow: /set_admin_role.html
-Disallow: /trigger_manual_update.html

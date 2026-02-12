@@ -4,19 +4,19 @@
 
   <!-- Homepage / Landing Page -->
   <url>
-    <loc>https://your-card-collection-2026.web.app/</loc>
-    <lastmod>2026-01-29</lastmod>
+    <loc>https://assetide.com/</loc>
+    <lastmod>2026-02-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
-    <xhtml:link rel="alternate" hreflang="sk" href="https://your-card-collection-2026.web.app/?lang=sk"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://your-card-collection-2026.web.app/?lang=en"/>
-    <xhtml:link rel="alternate" hreflang="cs" href="https://your-card-collection-2026.web.app/?lang=cz"/>
+    <xhtml:link rel="alternate" hreflang="sk" href="https://assetide.com/?lang=sk"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://assetide.com/?lang=en"/>
+    <xhtml:link rel="alternate" hreflang="cs" href="https://assetide.com/?lang=cz"/>
   </url>
 
   <!-- Collectors Page -->
   <url>
-    <loc>https://your-card-collection-2026.web.app/collectors</loc>
-    <lastmod>2026-01-29</lastmod>
+    <loc>https://assetide.com/collectors</loc>
+    <lastmod>2026-02-12</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>

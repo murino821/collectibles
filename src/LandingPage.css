@@ -99,6 +99,20 @@
   font-size: 1.25rem;
 }
 
+.hero-logo {
+  height: 28px;
+  width: auto;
+  border-radius: 4px;
+}
+
+.footer-logo {
+  height: 24px;
+  width: auto;
+  vertical-align: middle;
+  margin-right: 4px;
+  border-radius: 4px;
+}
+
 .hero-title {
   font-size: clamp(2.5rem, 8vw, 4.5rem);
   font-weight: 800;
@@ -911,6 +925,98 @@
   margin-top: 2px;
 }
 
+/* Plans Section */
+.howto-plans {
+  margin-top: 3rem;
+  margin-bottom: 3rem;
+}
+
+.howto-plans h2 {
+  font-size: 1.5rem;
+  color: #1e293b;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.howto-plans-subtitle {
+  text-align: center;
+  color: #64748b;
+  margin-bottom: 2rem;
+}
+
+.plans-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.plan-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.plan-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+}
+
+.plan-card-highlighted {
+  border: 2px solid #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+}
+
+.plan-card-highlighted:hover {
+  box-shadow: 0 12px 24px rgba(102, 126, 234, 0.25);
+}
+
+.plan-card-header {
+  text-align: center;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.plan-card-header h3 {
+  font-size: 1.25rem;
+  color: #1e293b;
+  margin-bottom: 0.25rem;
+}
+
+.plan-price {
+  font-size: 0.95rem;
+  color: #667eea;
+  font-weight: 600;
+}
+
+.plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.plan-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: #475569;
+  margin-bottom: 0.5rem;
+  line-height: 1.5;
+}
+
+.plan-features li svg {
+  flex-shrink: 0;
+  color: #22c55e;
+  margin-top: 2px;
+}
+
+.plan-card-highlighted .plan-features li svg {
+  color: #667eea;
+}
+
 /* FAQ Section */
 .howto-faq {
   margin-top: 2rem;
@@ -972,6 +1078,14 @@
   }
 
   .howto-step-card {
+    padding: 2rem;
+  }
+
+  .plans-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .plan-card {
     padding: 2rem;
   }
 

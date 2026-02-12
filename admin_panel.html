@@ -1046,75 +1046,79 @@
       status.className = 'status loading';
       status.innerHTML = `<strong>⏳ Spúšťam aktualizáciu pre ${email}...</strong>`;
 
-      try {
-        const updateUserCollection = httpsCallable(functions, 'updateUserCollectionV2');
-        const result = await updateUserCollection({ userId: userId });
+      // Start listening to status BEFORE calling the function
+      const statusRef = doc(db, 'updateStatus', userId);
+      let unsubscribe = null;
 
-        // Update started in background - poll status
-        status.innerHTML = `<strong>⏳ Aktualizácia prebieha na pozadí...</strong><br><small>Sledovanie postupu...</small>`;
+      unsubscribe = onSnapshot(statusRef, (docSnap) => {
+        if (!docSnap.exists()) return;
 
-        // Poll status document every 2 seconds
-        const statusRef = doc(db, 'updateStatus', userId);
-        let unsubscribe = null;
+        const statusData = docSnap.data();
 
-        unsubscribe = onSnapshot(statusRef, (docSnap) => {
-          if (!docSnap.exists()) return;
+        if (statusData.status === 'processing') {
+          status.className = 'status loading';
+          status.innerHTML = `
+            <strong>⏳ Aktualizácia prebieha...</strong><br>
+            Email: ${email}<br>
+            Spracované: ${statusData.successCount + statusData.failCount} / ${statusData.cardsProcessed || '?'}<br>
+            ✓ Úspešne: <strong style="color: #10b981;">${statusData.successCount || 0}</strong><br>
+            ${statusData.failCount > 0 ? `✗ Chyby: <strong style="color: #ef4444;">${statusData.failCount}</strong>` : ''}
+          `;
+        } else if (statusData.status === 'completed') {
+          status.className = 'status success';
+          status.innerHTML = `
+            <strong>✅ Aktualizácia dokončená!</strong><br>
+            Email: ${email}<br>
+            Celkom položiek: ${statusData.cardsProcessed || 0}<br>
+            ✓ Úspešne aktualizovaných: <strong style="color: #10b981;">${statusData.successCount || 0}</strong><br>
+            ${statusData.failCount > 0 ? `✗ Nepodarilo sa: <strong style="color: #ef4444;">${statusData.failCount}</strong><br>` : ''}
+            ${statusData.failCount > 0 ? '<small style="color: #64748b;">Položky bez výsledkov z eBay môžeš upraviť manuálne v zbierke.</small>' : ''}
+          `;
 
-          const statusData = docSnap.data();
+          if (unsubscribe) unsubscribe();
 
-          if (statusData.status === 'processing') {
-            status.className = 'status loading';
-            status.innerHTML = `
-              <strong>⏳ Aktualizácia prebieha...</strong><br>
-              Email: ${email}<br>
-              Spracované: ${statusData.successCount + statusData.failCount} / ${statusData.cardsProcessed || '?'}<br>
-              ✓ Úspešne: <strong style="color: #10b981;">${statusData.successCount || 0}</strong><br>
-              ${statusData.failCount > 0 ? `✗ Chyby: <strong style="color: #ef4444;">${statusData.failCount}</strong>` : ''}
-            `;
-          } else if (statusData.status === 'completed') {
-            status.className = 'status success';
-            status.innerHTML = `
-              <strong>✅ Aktualizácia dokončená!</strong><br>
-              Email: ${email}<br>
-              Celkom položiek: ${statusData.cardsProcessed || 0}<br>
-              ✓ Úspešne aktualizovaných: <strong style="color: #10b981;">${statusData.successCount || 0}</strong><br>
-              ${statusData.failCount > 0 ? `✗ Nepodarilo sa: <strong style="color: #ef4444;">${statusData.failCount}</strong><br>` : ''}
-              ${statusData.failCount > 0 ? '<small style="color: #64748b;">Položky bez výsledkov z eBay môžeš upraviť manuálne v zbierke.</small>' : ''}
-            `;
-
-            // Stop listening
-            if (unsubscribe) unsubscribe();
-
-            if (button) {
-              button.disabled = false;
-              button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
-            }
-
-            // Reload users
-            loadUsers();
-
-            setTimeout(resetStatusHint, 8000);
-          } else if (statusData.status === 'error') {
-            status.className = 'status error';
-            status.innerHTML = `<strong>❌ Chyba pri aktualizácii:</strong><br><code>${statusData.error || 'Unknown error'}</code>`;
-
-            // Stop listening
-            if (unsubscribe) unsubscribe();
-
-            if (button) {
-              button.disabled = false;
-              button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
-            }
+          if (button) {
+            button.disabled = false;
+            button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
           }
-        });
 
+          loadUsers();
+          setTimeout(resetStatusHint, 8000);
+        } else if (statusData.status === 'error') {
+          status.className = 'status error';
+          status.innerHTML = `<strong>❌ Chyba pri aktualizácii:</strong><br><code>${statusData.error || 'Unknown error'}</code>`;
+
+          if (unsubscribe) unsubscribe();
+
+          if (button) {
+            button.disabled = false;
+            button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
+          }
+        }
+      });
+
+      try {
+        const updateUserCollection = httpsCallable(functions, 'updateUserCollectionV2', {timeout: 3600000});
+        await updateUserCollection({ userId: userId });
       } catch (error) {
-        console.error('Error triggering update:', error);
-        status.className = 'status error';
-        status.innerHTML = `<strong>❌ Chyba pri aktualizácii:</strong><br><code>${error.message}</code>`;
-        if (button) {
-          button.disabled = false;
-          button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
+        // deadline-exceeded is expected for long updates — function keeps running server-side
+        // Status is tracked via onSnapshot above, so we only show real errors
+        if (error.code === 'deadline-exceeded' || error.message?.includes('deadline-exceeded')) {
+          console.log('Client timeout (expected for long updates) — server continues processing');
+          status.className = 'status loading';
+          status.innerHTML = `
+            <strong>⏳ Aktualizácia prebieha na serveri...</strong><br>
+            <small>Klientské spojenie vypršalo, ale aktualizácia pokračuje. Sledovanie postupu...</small>
+          `;
+        } else {
+          console.error('Error triggering update:', error);
+          status.className = 'status error';
+          status.innerHTML = `<strong>❌ Chyba pri aktualizácii:</strong><br><code>${error.message}</code>`;
+          if (unsubscribe) unsubscribe();
+          if (button) {
+            button.disabled = false;
+            button.textContent = button.dataset.originalLabel || '▶️ Spustiť update';
+          }
         }
       }
     };

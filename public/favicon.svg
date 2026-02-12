@@ -1,14 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    <linearGradient id="shield" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ecdc4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2c6e6a;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="wave" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#c8a45c;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#a07c3a;stop-opacity:1" />
     </linearGradient>
   </defs>
-  <!-- Card background -->
-  <rect x="15" y="10" width="70" height="80" rx="8" fill="url(#grad)" />
-  <!-- Hockey stick -->
-  <path d="M35 25 L35 65 L50 75 L55 70 L45 62 L45 25 Z" fill="white" opacity="0.9"/>
-  <!-- Puck -->
-  <ellipse cx="62" cy="55" rx="12" ry="6" fill="white" opacity="0.9"/>
+  <!-- Shield shape -->
+  <path d="M50 5 L90 20 L90 55 Q90 80 50 95 Q10 80 10 55 L10 20 Z" fill="url(#shield)" />
+  <!-- Wave -->
+  <path d="M20 55 Q30 40 40 50 Q50 60 60 45 Q70 30 80 45 L80 65 Q70 55 60 65 Q50 75 40 65 Q30 55 20 70 Z" fill="url(#wave)" opacity="0.9"/>
+  <!-- Arrow up -->
+  <path d="M45 25 L55 25 L55 42 L62 42 L50 15 L38 42 L45 42 Z" fill="white" opacity="0.9"/>
 </svg>

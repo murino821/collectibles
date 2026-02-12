@@ -52,7 +52,7 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
         <div className="hero-wrapper">
           <div className="hero-content">
             <div className="hero-badge">
-              <img src="/logo.png" alt="AssetTide" className="hero-logo" />
+              <img src="/logo.jpg" alt="AssetTide" className="hero-logo" />
               <span>{t('landing.badge', lang)}</span>
             </div>
 
@@ -231,7 +231,7 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
         <div className="container">
           <div className="footer-content">
             <div className="footer-brand">
-              <h3><img src="/logo.png" alt="AssetTide" className="footer-logo" /> {t('landing.footer.brand', lang)}</h3>
+              <h3><img src="/logo.jpg" alt="AssetTide" className="footer-logo" /> {t('landing.footer.brand', lang)}</h3>
               <p>{t('landing.footer.tagline', lang)}</p>
             </div>
             <div className="footer-links">

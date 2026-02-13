@@ -571,7 +571,7 @@ function computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals) {
       normalizedTitle.includes(`/${serialToken}`) ||
       normalizedTitle.includes(`${serialToken}/`) ||
       titleTokens.has(serialToken);
-    addScore(2, hasSerial);
+    addScore(5, hasSerial);
   }
 
   if (signals.grade) {
@@ -594,6 +594,9 @@ function computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals) {
         if (tierDiff >= 2) baseScore *= 0.3;       // e.g., /10 vs /999
         else if (tierDiff === 1) baseScore *= 0.6;  // e.g., /25 vs /99
       }
+    } else {
+      // Listing has NO serial — likely a base card, penalize heavily
+      baseScore *= 0.4;
     }
   }
 
@@ -1261,7 +1264,7 @@ function calculateEstimatedPriceDetailed(results) {
 
   const serialFallback = results.some((item) => item.serialFallback);
   if (serialFallback) {
-    discountPct += 0.06;
+    discountPct += 0.15;
   }
 
   const gradeFallback = results.some((item) => item.gradeFallback);

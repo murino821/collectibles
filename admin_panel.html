@@ -401,14 +401,16 @@
                 <th>Položky</th>
                 <th>Limit</th>
                 <th>Update interval</th>
+                <th>Posledný update</th>
                 <th>Najbližší update</th>
+                <th>Email notif.</th>
                 <th>Registrácia</th>
                 <th>Akcie</th>
               </tr>
             </thead>
             <tbody id="usersTableBody">
               <tr>
-                <td colspan="9" style="text-align: center; color: #94a3b8;">
+                <td colspan="11" style="text-align: center; color: #94a3b8;">
                   Načítavam používateľov...
                 </td>
               </tr>
@@ -717,20 +719,28 @@
       filtered.forEach(user => {
         const tr = document.createElement('tr');
         const nextUpdate = user.nextUpdateDate ? new Date(user.nextUpdateDate).toLocaleString('sk-SK') : 'N/A';
+        const lastUpdate = user.lastCollectionUpdate ? new Date(user.lastCollectionUpdate).toLocaleString('sk-SK') : '—';
         const pricingMode = user.pricingMode || 'text';
         const pricingLabel = pricingMode === 'image'
           ? 'FOTO'
           : (pricingMode === 'hybrid' ? 'HYBRID' : 'TEXT');
+        const intervalDisplay = user.updateIntervalDays > 0 ? `${user.updateIntervalDays} dní` : '—';
         tr.innerHTML = `
           <td>${user.email || user.displayName || user.id}</td>
           <td><span class="role-badge role-${user.role}">${user.role}</span></td>
           <td><span class="mode-badge mode-${pricingMode}">${pricingLabel}</span></td>
           <td><strong>${user.currentCardCount}</strong></td>
           <td>${user.cardLimit === 999999 ? '∞' : user.cardLimit}</td>
-          <td>${user.updateIntervalDays} dní</td>
+          <td>${intervalDisplay}</td>
+          <td>${lastUpdate}</td>
           <td>
             ${nextUpdate}
             <button onclick="openUpdateDateModal('${user.id}', '${user.email}', '${user.nextUpdateDate || ''}')" style="margin-left: 5px; padding: 4px 8px; font-size: 12px;">✏️</button>
+          </td>
+          <td>
+            <button onclick="toggleEmailNotif('${user.id}', ${!user.emailNotifications})" style="background: ${user.emailNotifications ? '#10b981' : '#64748b'}; font-size: 11px; padding: 4px 10px;">
+              ${user.emailNotifications ? 'ON' : 'OFF'}
+            </button>
           </td>
           <td>${user.createdAt ? new Date(user.createdAt).toLocaleDateString('sk-SK') : 'N/A'}</td>
           <td>
@@ -973,6 +983,27 @@
         setTimeout(resetStatusHint, 3000);
       } catch (error) {
         console.error('Error updating pricing mode:', error);
+        status.className = 'status error';
+        status.innerHTML = `<strong>❌ Chyba:</strong> ${error.message}`;
+      }
+    };
+
+    // Email Notifications Toggle
+    window.toggleEmailNotif = async function(userId, enabled) {
+      const status = document.getElementById('status');
+      status.className = 'status loading';
+      status.innerHTML = `<strong>⏳ ${enabled ? 'Zapínam' : 'Vypínam'} email notifikácie...</strong>`;
+
+      try {
+        const toggleFn = httpsCallable(functions, 'toggleEmailNotificationsV2');
+        await toggleFn({ targetUserId: userId, enabled });
+
+        status.className = 'status success';
+        status.innerHTML = `<strong>✅ Email notifikácie ${enabled ? 'zapnuté' : 'vypnuté'}</strong>`;
+        await loadUsers();
+        setTimeout(resetStatusHint, 3000);
+      } catch (error) {
+        console.error('Error toggling email notifications:', error);
         status.className = 'status error';
         status.innerHTML = `<strong>❌ Chyba:</strong> ${error.message}`;
       }

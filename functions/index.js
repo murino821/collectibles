@@ -10,6 +10,7 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 const fetch = require("node-fetch");
+const nodemailer = require("nodemailer");
 admin.initializeApp();
 
 const db = admin.firestore();
@@ -111,6 +112,14 @@ async function updateUserCollection(userId, options = {}) {
   const cards = cardsSnapshot.docs;
   console.log(`📊 Found ${cards.length} cards to update`);
 
+  // Capture portfolio value BEFORE updating prices
+  let oldTotalValue = 0;
+  cards.forEach((doc) => {
+    const card = doc.data();
+    const qty = card.quantity || 1;
+    oldTotalValue += (card.current || 0) * qty;
+  });
+
   // Update status document with total count
   const statusRef = db.collection("updateStatus").doc(userId);
   await statusRef.update({
@@ -160,15 +169,23 @@ async function updateUserCollection(userId, options = {}) {
     };
 
     try {
+      // Skip cards with manual pricing (autoUpdate disabled)
+      if (card.autoUpdate === false) {
+        debugEntry.outcome = "manual-override";
+        debugEntry.durationMs = Date.now() - cardStartTime;
+        return {debugEntry, success: true, error: null};
+      }
+
       let results = [];
       let textResponse = null;
       let imageResponse = null;
       const imageUrl = typeof card.imageUrl === "string" ? card.imageUrl.trim() : "";
+      const categoryId = card.ebayCategory || null;
 
       if (usingTextMode || usingHybridMode) {
         try {
           debugEntry.input.name = card.item;
-          const cacheKey = (card.item || "").toLowerCase().trim();
+          const cacheKey = (card.item || "").toLowerCase().trim() + (categoryId ? `|cat:${categoryId}` : "");
 
           if (textQueryCache.has(cacheKey)) {
             console.log(`🔍 Text search (cached): ${card.item}`);
@@ -178,7 +195,7 @@ async function updateUserCollection(userId, options = {}) {
             cacheHits++;
           } else {
             console.log(`🔍 Text search: ${card.item}`);
-            textResponse = await searchEbayCardWithDebug(card.item, fxRates);
+            textResponse = await searchEbayCardWithDebug(card.item, fxRates, {categoryId});
             apiCallsUsed += textResponse?.debug?.apiCalls || 0;
             textQueryCache.set(cacheKey, textResponse);
             textQueryCardCount.set(cacheKey, 1);
@@ -204,7 +221,7 @@ async function updateUserCollection(userId, options = {}) {
         } else {
           try {
             console.log(`🖼️  Image search: ${card.item}`);
-            imageResponse = await searchEbayCardByImageWithDebug(imageUrl, card.item, fxRates);
+            imageResponse = await searchEbayCardByImageWithDebug(imageUrl, card.item, fxRates, {categoryId});
             apiCallsUsed += imageResponse?.debug?.apiCalls || 0;
           } catch (error) {
             if (usingImageMode && !usingHybridMode) {
@@ -240,6 +257,47 @@ async function updateUserCollection(userId, options = {}) {
         imageResults.forEach((item) => addResult(item, "image"));
         results = Array.from(merged.values());
 
+        // Image-priority: image search identifies the exact card visually,
+        // so when image and text results diverge in price, trust image more.
+        if (imageResults.length > 0) {
+          const imagePrices = imageResults.map((r) => r.price).sort((a, b) => a - b);
+          const textPrices = textResults.map((r) => r.price).sort((a, b) => a - b);
+          const imageMedianPrice = imagePrices[Math.floor(imagePrices.length / 2)] || null;
+          const textMedianPrice = textPrices.length
+            ? textPrices[Math.floor(textPrices.length / 2)]
+            : null;
+
+          const priceDivergence = imageMedianPrice && textMedianPrice
+            ? Math.max(imageMedianPrice, textMedianPrice) / Math.min(imageMedianPrice, textMedianPrice)
+            : 1;
+
+          if (priceDivergence > 10) {
+            // Extreme divergence (e.g., image=€42 vs text=€0.93 for Valábik The Cup)
+            // Text results are matching wrong card variant — use image only
+            results = results.filter((item) => item.sources?.includes("image"));
+            debugEntry.warnings.push(`Image-priority: text excluded (divergence ${priceDivergence.toFixed(1)}x)`);
+          } else if (priceDivergence > 3) {
+            // High divergence — heavily penalize text-only, boost image
+            results.forEach((item) => {
+              const hasImage = item.sources?.includes("image");
+              const hasText = item.sources?.includes("text");
+              if (hasImage) {
+                item.matchScore = Math.min((item.matchScore || 0.5) * 1.5, 1.0);
+              } else if (hasText && !hasImage) {
+                item.matchScore = (item.matchScore || 0.5) * 0.15;
+              }
+            });
+            debugEntry.warnings.push(`Image-priority: text penalized (divergence ${priceDivergence.toFixed(1)}x)`);
+          } else {
+            // Low divergence — just boost image items slightly
+            results.forEach((item) => {
+              if (item.sources?.includes("image")) {
+                item.matchScore = Math.min((item.matchScore || 0.5) * 1.5, 1.0);
+              }
+            });
+          }
+        }
+
         debugEntry.search = {
           text: textResponse?.debug || null,
           image: imageResponse?.debug || null,
@@ -261,7 +319,23 @@ async function updateUserCollection(userId, options = {}) {
         matchScore: typeof item.matchScore === "number" ? Number(item.matchScore.toFixed(3)) : null,
         isAuctionOnly: !!item.isAuctionOnly,
         bidCount: item.bidCount || 0,
+        sources: item.sources || null,
       }));
+
+      // In hybrid mode, also log image-only results separately for debugging
+      if (usingHybridMode) {
+        const imageOnlyResults = results
+            .filter((item) => item.sources?.includes("image"))
+            .slice(0, 5);
+        if (imageOnlyResults.length > 0) {
+          debugEntry.imageTopResults = imageOnlyResults.map((item) => ({
+            title: item.title,
+            price: item.price,
+            matchScore: typeof item.matchScore === "number" ? Number(item.matchScore.toFixed(3)) : null,
+            sources: item.sources,
+          }));
+        }
+      }
 
       if (results.length > 0) {
         const priceInfo = calculateEstimatedPriceDetailed(results);
@@ -447,6 +521,7 @@ async function updateUserCollection(userId, options = {}) {
       totalCards: cards.length,
       successCount,
       failCount,
+      oldTotalValue,
     });
 
     console.log(`✅ Update complete for ${userId}: ${successCount}/${cards.length} success, ${failCount} failed, ${apiCallsUsed} API calls, ${cacheHits} cache hits, ${totalDurationS}s`);
@@ -459,6 +534,78 @@ async function updateUserCollection(userId, options = {}) {
     failCount,
     apiCallsUsed,
   };
+}
+
+/**
+ * Send email notification after collection update
+ * @param {string} userEmail - User's email address
+ * @param {Object} data - Update summary data
+ */
+async function sendUpdateEmail(userEmail, data) {
+  if (!userEmail) return;
+
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = process.env.GMAIL_APP_PASSWORD;
+  if (!gmailUser || !gmailPass) {
+    console.log("📧 Email not configured — skipping");
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {user: gmailUser, pass: gmailPass},
+  });
+
+  const change = data.newValue - data.oldValue;
+  const changePercent = data.oldValue > 0 ?
+    ((change / data.oldValue) * 100).toFixed(1) : "0.0";
+  const changeSign = change >= 0 ? "+" : "";
+  const changeColor = change >= 0 ? "#10b981" : "#ef4444";
+  const successRate = data.totalCards > 0 ?
+    Math.round((data.successCount / data.totalCards) * 100) : 0;
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 500px; margin: 0 auto; background: #0f172a; color: #e2e8f0; border-radius: 12px; overflow: hidden;">
+      <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 24px; text-align: center;">
+        <h1 style="margin: 0; font-size: 20px; color: white;">Assetide</h1>
+        <p style="margin: 8px 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">Aktualizácia zbierky dokončená</p>
+      </div>
+      <div style="padding: 24px;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8;">Aktualizované karty</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold;">${data.successCount} / ${data.totalCards} (${successRate}%)</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8;">Pôvodná hodnota</td>
+            <td style="padding: 8px 0; text-align: right;">&euro;${data.oldValue.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8;">Nová hodnota</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; font-size: 18px;">&euro;${data.newValue.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8;">Zmena</td>
+            <td style="padding: 8px 0; text-align: right; color: ${changeColor}; font-weight: bold;">${changeSign}&euro;${Math.abs(change).toFixed(2)} (${changeSign}${changePercent}%)</td>
+          </tr>
+        </table>
+        <div style="text-align: center; margin-top: 24px;">
+          <a href="https://assetide.com" style="display: inline-block; background: #6366f1; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold;">Otvoriť Assetide</a>
+        </div>
+      </div>
+      <div style="padding: 16px 24px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #1e293b;">
+        Assetide &mdash; Správa zbierky a sledovanie hodnoty
+      </div>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"Assetide" <${gmailUser}>`,
+    to: userEmail,
+    subject: `Zbierka aktualizovaná — ${changeSign}€${Math.abs(change).toFixed(2)} (${changeSign}${changePercent}%)`,
+    html,
+  });
+  console.log(`📧 Email sent to ${userEmail}`);
 }
 
 /**
@@ -506,6 +653,19 @@ async function createUserNotification(userId, logData) {
 
     await db.collection("notifications").add(notification);
     console.log(`📬 Notification created for user ${userId}`);
+
+    // Send email notification
+    const userSnap = await db.collection("users").doc(userId).get();
+    const userData = userSnap.exists ? userSnap.data() : {};
+    if (userData.emailNotifications !== false && userData.email) {
+      await sendUpdateEmail(userData.email, {
+        successCount: logData.successCount,
+        failCount: logData.failCount,
+        totalCards: logData.totalCards,
+        oldValue: logData.oldTotalValue || 0,
+        newValue: totalValue,
+      }).catch((err) => console.error("Email send error:", err));
+    }
   } catch (error) {
     console.error("Error creating notification:", error);
     // Don't throw - notification is not critical
@@ -630,7 +790,7 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
       currentCardCount: 0,
 
       // Notifications
-      emailNotifications: false,
+      emailNotifications: true,
       inAppNotifications: true,
 
       // Currency preferences
@@ -1034,17 +1194,23 @@ exports.getAllUsersV2 = onCall(async (request) => {
           .where("status", "==", "zbierka")
           .get();
 
+      const role = userData.role || "standard";
+      const defaultLimit = role === "standard" ? 20 : 999999;
+      const defaultInterval = role === "standard" ? 0 : 15;
+
       users.push({
         id: docSnap.id,
         email: userData.email,
         displayName: userData.displayName,
-        role: userData.role || "standard",
+        role,
         pricingMode: userData.pricingMode || "text",
-        cardLimit: userData.cardLimit,
+        cardLimit: userData.cardLimit ?? defaultLimit,
         currentCardCount: cardsSnapshot.size,
         priceUpdatesEnabled: userData.priceUpdatesEnabled,
-        updateIntervalDays: userData.updateIntervalDays,
+        updateIntervalDays: userData.updateIntervalDays ?? defaultInterval,
         nextUpdateDate: userData.nextUpdateDate?.toDate?.().toISOString?.() || null,
+        lastCollectionUpdate: userData.lastCollectionUpdate?.toDate?.().toISOString?.() || null,
+        emailNotifications: userData.emailNotifications ?? false,
         createdAt: userData.createdAt?.toDate?.().toISOString?.() || null,
       });
     }
@@ -1260,6 +1426,38 @@ exports.updatePricingModeV2 = onCall(async (request) => {
     return {success: true, pricingMode};
   } catch (error) {
     console.error("Error updating pricing mode:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+exports.toggleEmailNotificationsV2 = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User not logged in");
+  }
+
+  const adminId = request.auth.uid;
+  const adminDoc = await db.collection("users").doc(adminId).get();
+  if (!isAllowlistedAdmin(request) && (!adminDoc.exists || adminDoc.data().role !== "admin")) {
+    throw new HttpsError("permission-denied", "Only admins can toggle email notifications");
+  }
+
+  const {targetUserId, enabled} = request.data || {};
+
+  if (!targetUserId || typeof enabled !== "boolean") {
+    throw new HttpsError("invalid-argument", "Missing targetUserId or enabled (boolean)");
+  }
+
+  console.log(`📧 toggleEmailNotifications: ${adminId} setting ${targetUserId} to ${enabled}`);
+
+  try {
+    await db.collection("users").doc(targetUserId).update({
+      emailNotifications: enabled,
+    });
+
+    console.log(`✅ User ${targetUserId} emailNotifications set to ${enabled}`);
+    return {success: true, emailNotifications: enabled};
+  } catch (error) {
+    console.error("Error toggling email notifications:", error);
     throw new HttpsError("internal", error.message);
   }
 });

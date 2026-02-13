@@ -283,7 +283,7 @@ function CardManager({ user }) {
   };
   const openAddModal = () => {
     setEditingCard(null);
-    setFormData({ item: '', buy: '', current: '', status: 'zbierka', note: '', imageFile: null, imageUrl: '', soldPrice: '', quantity: '1', isPublic: false });
+    setFormData({ item: '', buy: '', current: '', status: 'zbierka', note: '', imageFile: null, imageUrl: '', soldPrice: '', quantity: '1', isPublic: false, autoUpdate: true, ebayCategory: '' });
     setShowModal(true);
   };
   const openEditModal = (card) => {
@@ -298,7 +298,9 @@ function CardManager({ user }) {
       imageUrl: card.imageUrl || '',
       soldPrice: toInputValue(card.soldPrice),
       quantity: String(card.quantity || 1),
-      isPublic: !!card.isPublic
+      isPublic: !!card.isPublic,
+      autoUpdate: card.autoUpdate !== false,
+      ebayCategory: card.ebayCategory || ''
     });
     setShowModal(true);
   };
@@ -325,6 +327,8 @@ function CardManager({ user }) {
           userId: user.uid,
           quantity: quantityValue,
           isPublic: !!formData.isPublic,
+          autoUpdate: !!formData.autoUpdate,
+          ebayCategory: formData.ebayCategory || null,
           updatedAt: new Date()
         };
 
@@ -365,6 +369,8 @@ function CardManager({ user }) {
         userId: user.uid,
         quantity: quantityValue,
         isPublic: !!formData.isPublic,
+        autoUpdate: !!formData.autoUpdate,
+        ebayCategory: formData.ebayCategory || null,
         updatedAt: serverTimestamp()
       };
 
@@ -1389,12 +1395,44 @@ function CardManager({ user }) {
                         {t('manager.modal.currentPrice')} ({currency})
                         {editingCard && editingCard.ebayPriceSource && <span style={{ marginLeft: '6px', color: '#10b981' }}>📊</span>}
                       </label>
-                      <input type="number" step="0.01" min="0" value={formData.current} onChange={(e) => setFormData({ ...formData, current: e.target.value })} placeholder={currency} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }} />
+                      <input type="number" step="0.01" min="0" value={formData.current} onChange={(e) => setFormData({ ...formData, current: e.target.value })} disabled={editingCard && formData.autoUpdate} placeholder={currency} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? (editingCard && formData.autoUpdate ? '#1e293b' : '#334155') : (editingCard && formData.autoUpdate ? '#f1f5f9' : '#fff'), color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px', opacity: editingCard && formData.autoUpdate ? 0.6 : 1 }} />
                     </div>
                     {formData.status === 'predaná' && (
                       <div>
                         <label style={{ fontSize: '12px', fontWeight: '600', color: '#10b981', display: 'block', marginBottom: '6px' }}>{t('manager.modal.soldPrice')} ({currency})</label>
                         <input type="number" step="0.01" min="0" value={formData.soldPrice} onChange={(e) => setFormData({ ...formData, soldPrice: e.target.value })} placeholder={formData.current || currency} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px', borderColor: '#10b981' }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Auto-update toggle + eBay category */}
+                  <div style={{ display: 'grid', gridTemplateColumns: formData.autoUpdate && isDesktop ? '1fr 1fr' : '1fr', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!formData.autoUpdate}
+                        onChange={(e) => setFormData({ ...formData, autoUpdate: e.target.checked })}
+                        style={{ width: '18px', height: '18px' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#f8fafc' : '#0f172a' }}>{t('manager.modal.autoUpdate')}</div>
+                        <div style={{ fontSize: '11px', color: formData.autoUpdate ? '#10b981' : (darkMode ? '#94a3b8' : '#64748b') }}>
+                          {formData.autoUpdate ? t('manager.modal.autoUpdateOn') : t('manager.modal.autoUpdateOff')}
+                        </div>
+                      </div>
+                    </div>
+                    {formData.autoUpdate && (
+                      <div>
+                        <label style={{ fontSize: '12px', fontWeight: '600', color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '6px' }}>{t('manager.modal.ebayCategory')}</label>
+                        <select value={formData.ebayCategory} onChange={(e) => setFormData({ ...formData, ebayCategory: e.target.value })} style={{ ...styles.button, width: '100%', boxSizing: 'border-box', padding: '12px 14px', background: darkMode ? '#334155' : '#fff', color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }}>
+                          <option value="">Hockey Cards</option>
+                          <option value="213">Baseball Cards</option>
+                          <option value="214">Basketball Cards</option>
+                          <option value="215">Football Cards</option>
+                          <option value="218">Soccer Cards</option>
+                          <option value="183454">Pokemon Cards</option>
+                          <option value="183050">Other Trading Cards</option>
+                        </select>
                       </div>
                     )}
                   </div>

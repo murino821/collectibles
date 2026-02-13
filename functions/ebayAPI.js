@@ -106,6 +106,7 @@ const PHRASE_KEYWORDS = [
   "future watch",
   "canvas",
   "star rookie",
+  "acetate",
 ];
 
 const GRADE_TOKENS = ["psa", "bgs", "sgc", "cgc"];
@@ -117,6 +118,8 @@ const STRONG_PHRASES = new Set([
   "the cup",
   "beehive",
   "mvp",
+  "acetate",
+  "clear cut",
 ]);
 const EXCLUDE_REGEXES = [
   /\blot\b/,
@@ -135,6 +138,8 @@ const EXCLUDE_REGEXES = [
   /\b(binder|album|page|sheet)\b/,
   /\b(reprint|replica)\b/,
   /\b(case break|box break|group break|breakers?)\b/,
+  // T2: Checklist cards — different product, different price
+  /\bchecklist\b/,
 ];
 
 // Variant keywords that indicate a different card variant
@@ -259,13 +264,35 @@ function normalizeText(value) {
     .trim();
 }
 
-function isMultiPlayerListing(normalizedTitle) {
+function countKnownPlayers(normalizedTitle) {
   const knownPlayers = Object.keys(NHL_PLAYER_NAMES);
-  const found = knownPlayers.filter((name) => {
+  return knownPlayers.filter((name) => {
     const regex = new RegExp(`\\b${name}\\b`);
     return regex.test(normalizedTitle);
-  });
-  return found.length >= 3;
+  }).length;
+}
+
+function isMultiPlayerListing(normalizedTitle) {
+  return countKnownPlayers(normalizedTitle) >= 3;
+}
+
+// T2: Detect checklist-style listings (2 players separated by / or "cl" prefix)
+const BRAND_TOKENS = new Set([
+  "upper", "deck", "opc", "ud", "spx", "spa", "ice", "mvp", "nhl",
+  "series", "extended", "authentic", "premier", "artifacts", "allure",
+]);
+function isChecklistListing(normalizedTitle) {
+  // Explicit CL marker: "#cl", "cl-", "cl #" patterns
+  if (/\bcl\b/.test(normalizedTitle)) return true;
+  // Slash-separated names (e.g., "Celebrini / Michkov", "Celebrini/Michkov")
+  if (/[a-z]{3,}\s*\/\s*[a-z]{3,}/.test(normalizedTitle)) {
+    if (countKnownPlayers(normalizedTitle) >= 2) return true;
+    const slashMatch = normalizedTitle.match(/([a-z]{3,})\s*\/\s*([a-z]{3,})/);
+    if (slashMatch && !BRAND_TOKENS.has(slashMatch[1]) && !BRAND_TOKENS.has(slashMatch[2])) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function tokenize(value) {
@@ -279,64 +306,34 @@ function tokenize(value) {
 
 const PHRASE_TOKENS = new Set(PHRASE_KEYWORDS.flatMap((phrase) => tokenize(phrase)));
 const EXTRA_PLAYER_STOP_WORDS = [
-  "auto",
-  "autograph",
-  "autographed",
-  "signature",
-  "signed",
-  "patch",
-  "jersey",
-  "rookie",
-  "rc",
-  "base",
-  "insert",
-  "parallel",
-  "limited",
-  "numbered",
-  "serial",
-  "short",
-  "print",
-  "sp",
-  "ssp",
-  "sott",
-  "mvp",
-  "cup",
-  "beehive",
-  "future",
-  "watch",
-  "young",
-  "guns",
-  "upper",
-  "deck",
-  "ud",
-  "opc",
-  "authentic",
-  "series",
-  "stature",
-  "artifacts",
-  "trilogy",
-  "premier",
-  "credentials",
-  "ice",
-  "chronology",
-  "allure",
-  "clear",
-  "cut",
-  "tim",
-  "hortons",
-  "metal",
-  "universe",
-  "canvas",
-  "rookies",
-  "matte",
-  "gold",
-  "silver",
-  "bronze",
-  "platinum",
-  "chrome",
-  "renewed",
-  "salute",
-  "cache",
+  // Autograph / patch keywords
+  "auto", "autograph", "autographed", "signature", "signed",
+  "patch", "jersey",
+  // Card type keywords
+  "rookie", "rc", "base", "insert", "parallel",
+  "limited", "numbered", "serial", "short", "print",
+  "sp", "ssp", "sott", "mvp", "cup",
+  // Set / brand keywords
+  "beehive", "future", "watch", "young", "guns",
+  "upper", "deck", "ud", "opc", "authentic", "series",
+  "stature", "artifacts", "trilogy", "premier", "credentials",
+  "ice", "chronology", "allure", "clear", "cut",
+  "tim", "hortons", "metal", "universe", "canvas",
+  "rookies", "star",
+  // Color / finish keywords
+  "matte", "gold", "silver", "bronze", "platinum", "chrome",
+  "speckled", "rainbow", "foil", "preview", "retro",
+  // Variant keywords
+  "renewed", "salute", "cache", "acetate",
+  // T1 fix: words incorrectly parsed as player names
+  "high", "gloss", "team", "canada", "juniors", "junior",
+  "lucky", "shot", "arena", "giveaway",
+  "oversize", "oversized", "jumbo", "topper",
+  "second", "year", "first",
+  "marquee", "checklist", "cl",
+  "exclusives", "exclusive", "bonus", "french",
+  "mega", "update", "extended", "tribute", "throwback",
+  "world", "national", "international", "usa",
 ];
 const PLAYER_STOP_WORDS = new Set([
   ...STOP_WORDS,
@@ -356,7 +353,8 @@ function extractSignals(cardName) {
   const rawTokens = tokenize(normalized);
   const filteredTokens = rawTokens.filter((token) => !STOP_WORDS.has(token));
   const nonNumericTokens = filteredTokens
-    .filter((token) => !/^\d+$/.test(token) && !GRADE_TOKENS.includes(token));
+    .filter((token) => !/^\d+$/.test(token) && !GRADE_TOKENS.includes(token))
+    .filter((token) => !/^[a-z]{0,2}\d+/.test(token) && !/^\d+[a-z]{0,2}$/.test(token)); // filter card codes like "la5", "c375", "82a"
   const strongPlayerTokens = nonNumericTokens
     .filter((token) => !PLAYER_STOP_WORDS.has(token));
   let playerTokens = strongPlayerTokens.slice(0, 2);
@@ -584,6 +582,35 @@ function computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals) {
 
   let baseScore = maxScore > 0 ? score / maxScore : 0;
 
+  // T5: Serial tier mismatch penalty — /25 card priced very differently from /999
+  if (signals.serial) {
+    const sourceSerial = parseInt(signals.serial, 10);
+    const listingSerialMatch = normalizedTitle.match(/\/\s*(\d{2,4})\b/);
+    if (listingSerialMatch) {
+      const listingSerial = parseInt(listingSerialMatch[1], 10);
+      if (sourceSerial !== listingSerial) {
+        const getTier = (s) => s <= 10 ? 1 : s <= 50 ? 2 : s <= 199 ? 3 : 4;
+        const tierDiff = Math.abs(getTier(sourceSerial) - getTier(listingSerial));
+        if (tierDiff >= 2) baseScore *= 0.3;       // e.g., /10 vs /999
+        else if (tierDiff === 1) baseScore *= 0.6;  // e.g., /25 vs /99
+      }
+    }
+  }
+
+  // T2: Checklist penalty — listing looks like CL but source card is not
+  const sourceIsChecklist = signals.normalized &&
+    (/\bchecklist\b/.test(signals.normalized) || /\bcl\b/.test(signals.normalized));
+  if (!sourceIsChecklist && isChecklistListing(normalizedTitle)) {
+    baseScore *= 0.15; // heavy penalty — checklist cards have very different prices
+  }
+
+  // T6: Oversized/Jumbo penalty — different product format, different price
+  const sourceIsOversized = signals.normalized &&
+    /\b(oversized?|jumbo|box\s*topper)\b/.test(signals.normalized);
+  if (!sourceIsOversized && /\b(oversized?|jumbo|box\s*topper)\b/.test(normalizedTitle)) {
+    baseScore *= 0.3;
+  }
+
   // Variant penalty: listing has "renewed/retro" but source card does not
   VARIANT_PENALTY_KEYWORDS.forEach((variant) => {
     const listingHas = normalizedTitle.includes(variant);
@@ -593,6 +620,22 @@ function computeMatchScoreWithTokens(normalizedTitle, titleTokens, signals) {
       baseScore *= (1 - penalty);
     }
   });
+
+  // T8: SSP mismatch penalty — SSP cards are much rarer and more expensive
+  const sourceHasSSP = signals.normalized && /\bssp\b/.test(signals.normalized);
+  const listingHasSSP = /\bssp\b/.test(normalizedTitle);
+  if (sourceHasSSP && !listingHasSSP) {
+    baseScore *= 0.25; // source is SSP, listing is not — huge price difference
+  }
+
+  // T4: Graded vs Raw mismatch penalty
+  const gradeRegex = /\b(psa|bgs|sgc|cgc)\s*(10|9\.5|9|8\.5|8|7|6|5)\b/;
+  const listingHasGrade = gradeRegex.test(normalizedTitle);
+  if (signals.grade && !listingHasGrade) {
+    baseScore *= 0.5; // source is graded, listing is raw — significant price difference
+  } else if (!signals.grade && listingHasGrade) {
+    baseScore *= 0.6; // source is raw, listing is graded — inflate price risk
+  }
 
   // Autograph mismatch penalty
   const listingHasAuto = AUTOGRAPH_KEYWORDS.some((kw) => normalizedTitle.includes(kw));
@@ -752,7 +795,7 @@ async function searchEbayTextOnceDetailed(query, fxRates, options = {}) {
     q: query,
     limit: String(DEFAULT_LIMIT),
     fieldgroups: "EXTENDED",
-    category_ids: HOCKEY_CARDS_CATEGORY,
+    category_ids: options.categoryId || HOCKEY_CARDS_CATEGORY,
     sort: sortOrder,
   });
 
@@ -830,7 +873,7 @@ async function searchEbayImageOnceDetailed(imageUrl, fxRates, options = {}) {
 
   const params = new URLSearchParams({
     limit: String(DEFAULT_LIMIT),
-    category_ids: HOCKEY_CARDS_CATEGORY,
+    category_ids: options.categoryId || HOCKEY_CARDS_CATEGORY,
   });
   if (options.useFilters !== false) {
     params.set("filter", "buyingOptions:{AUCTION|FIXED_PRICE}");
@@ -883,7 +926,7 @@ async function searchEbayCard(cardName, fxRates = null) {
   return results;
 }
 
-async function searchEbayCardWithDebug(cardName, fxRates = null) {
+async function searchEbayCardWithDebug(cardName, fxRates = null, {categoryId} = {}) {
   if (!cardName) {
     return {results: [], debug: {mode: "text", reason: "empty-name"}};
   }
@@ -899,7 +942,8 @@ async function searchEbayCardWithDebug(cardName, fxRates = null) {
     for (const query of queryList) {
       if (!query) continue;
       console.log(`eBay text search query: "${query}" (${phase})`);
-      const {items, rawCount} = await searchEbayTextOnceDetailed(query, fxRates, options);
+      const opts = categoryId ? {...options, categoryId} : options;
+      const {items, rawCount} = await searchEbayTextOnceDetailed(query, fxRates, opts);
       aggregated = mergeUniqueResults(aggregated, items);
       queryStats.push({
         query,
@@ -923,8 +967,10 @@ async function searchEbayCardWithDebug(cardName, fxRates = null) {
   const firstQuery = queries[0];
   if (firstQuery && aggregated.length > 0) {
     console.log(`eBay text search query: "${firstQuery}" (A-desc)`);
+    const descOpts = {useEndDateFilter: true, sort: "-price"};
+    if (categoryId) descOpts.categoryId = categoryId;
     const {items: descItems, rawCount: descRaw} = await searchEbayTextOnceDetailed(
-        firstQuery, fxRates, {useEndDateFilter: true, sort: "-price"},
+        firstQuery, fxRates, descOpts,
     );
     aggregated = mergeUniqueResults(aggregated, descItems);
     queryStats.push({
@@ -970,18 +1016,21 @@ async function searchEbayCardByImage(imageUrl, cardName, fxRates = null) {
   return results;
 }
 
-async function searchEbayCardByImageWithDebug(imageUrl, cardName, fxRates = null) {
+async function searchEbayCardByImageWithDebug(imageUrl, cardName, fxRates = null, {categoryId} = {}) {
   if (!imageUrl) {
     return {results: [], debug: {mode: "image", reason: "missing-image"}};
   }
 
-  const {items, rawCount} = await searchEbayImageOnceDetailed(imageUrl, fxRates);
+  const imgOpts = categoryId ? {categoryId} : {};
+  const {items, rawCount} = await searchEbayImageOnceDetailed(imageUrl, fxRates, imgOpts);
   const signals = cardName ? extractSignals(cardName) : null;
   let filtered = signals ? filterRelevantResults(items, signals, "image") : items;
   let fallback = null;
 
   if (!filtered.length) {
-    const fallbackResp = await searchEbayImageOnceDetailed(imageUrl, fxRates, {useFilters: false});
+    const fallbackOpts = {useFilters: false};
+    if (categoryId) fallbackOpts.categoryId = categoryId;
+    const fallbackResp = await searchEbayImageOnceDetailed(imageUrl, fxRates, fallbackOpts);
     const fallbackItems = fallbackResp.items || [];
     fallback = {
       rawCount: fallbackResp.rawCount,
@@ -1084,9 +1133,16 @@ function weightedAverage(items) {
   items.forEach((item) => {
     let weight = typeof item.matchScore === "number" ? Math.max(item.matchScore, 0.1) : 0.5;
 
-    // Cross-validated bonus (hybrid mode): items found by both text and image
-    if (Array.isArray(item.sources) && item.sources.includes("text") && item.sources.includes("image")) {
-      weight *= 2.0;
+    if (Array.isArray(item.sources)) {
+      const hasText = item.sources.includes("text");
+      const hasImage = item.sources.includes("image");
+      if (hasText && hasImage) {
+        // Cross-validated: found by both text and image — strongest signal
+        weight *= 3.0;
+      } else if (hasImage && !hasText) {
+        // Image-only: visual match identifies exact card — strong signal
+        weight *= 2.0;
+      }
     }
 
     weightedSum += item.price * weight;
@@ -1230,12 +1286,36 @@ function calculateEstimatedPriceDetailed(results) {
     }
   }
 
+  // T3: Generic name protection — huge spread with many results indicates
+  // the query was too broad (e.g., just "Connor McDavid" with no year/set)
+  // Use P25 instead of weighted average to avoid inflated prices
+  let genericFallback = false;
+  const cleanedRange = prices.length >= 2 ? prices[prices.length - 1] / prices[0] : 1;
+  // Only activate for cards with high absolute price ceiling (>€10) to avoid
+  // penalizing cheap base cards (e.g., Valábik €0.61-€1.68)
+  const maxCleanedPrice = prices[prices.length - 1] || 0;
+  if (prices.length >= 20 && maxCleanedPrice > 10 && (spreadRatio > 2.0 || cleanedRange > 50)) {
+    genericFallback = true;
+    discountPct += 0.10;
+  }
+
   discountPct = Math.min(Math.max(discountPct, 0.1), 0.55);
 
-  const discountedPrice = baseAverage * (1 - discountPct);
+  let discountedPrice;
+  if (genericFallback) {
+    // For generic queries, use P25 (lower quartile) as base instead of weighted average
+    // This biases toward cheaper (more common base) cards which are more likely what the user has
+    const p25 = percentile(prices, 0.25);
+    discountedPrice = p25 * (1 - discountPct);
+  } else {
+    discountedPrice = baseAverage * (1 - discountPct);
+  }
   const finalPrice = auctionFloor ? Math.max(discountedPrice, auctionFloor) : discountedPrice;
 
-  const confidence = calculateConfidence(results, spreadRatio, serialFallback, gradeFallback);
+  let confidence = calculateConfidence(results, spreadRatio, serialFallback, gradeFallback);
+  if (genericFallback) {
+    confidence = Math.min(confidence, 35); // cap confidence for generic queries
+  }
 
   console.log(`eBay pricing: ${prices.length} listings (${outliersRemoved} outliers removed), discount ${(discountPct * 100).toFixed(0)}%, confidence ${confidence}%`);
   if (auctionFloor) {
@@ -1265,6 +1345,8 @@ function calculateEstimatedPriceDetailed(results) {
     crossValidatedPct: hasSources ? parseFloat(crossValidatedPct.toFixed(3)) : null,
     confidence,
     appliedFloor: auctionFloor ? finalPrice === auctionFloor : false,
+    genericFallback,
+    cleanedRange: parseFloat(cleanedRange.toFixed(1)),
   };
 
   return {price: parseFloat(finalPrice.toFixed(2)), confidence, debug};

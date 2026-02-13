@@ -3,45 +3,45 @@ import './LandingPage.css';
 import TopCards from './assets/components/TopCards';
 import GlobalCollectionStats from './assets/components/GlobalCollectionStats';
 import LanguageSwitcher from './assets/components/LanguageSwitcher';
-import { t, getCurrentLanguage } from './translations';
+import { useLanguage } from './LanguageContext';
 
 function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsClick, onPrivacyClick }) {
   const [activeFeature, setActiveFeature] = useState(0);
-  const lang = getCurrentLanguage();
+  const { language: lang, t } = useLanguage();
 
   const features = [
     {
       icon: '📊',
-      title: t('landing.feature1.title', lang),
-      description: t('landing.feature1.desc', lang)
+      title: t('landing.feature1.title'),
+      description: t('landing.feature1.desc')
     },
     {
       icon: '💰',
-      title: t('landing.feature2.title', lang),
-      description: t('landing.feature2.desc', lang)
+      title: t('landing.feature2.title'),
+      description: t('landing.feature2.desc')
     },
     {
       icon: '📈',
-      title: t('landing.feature3.title', lang),
-      description: t('landing.feature3.desc', lang)
+      title: t('landing.feature3.title'),
+      description: t('landing.feature3.desc')
     }
   ];
 
   const steps = [
     {
       number: '1',
-      title: t('landing.howto.step1', lang),
-      description: t('landing.howto.step1.desc', lang)
+      title: t('landing.howto.step1'),
+      description: t('landing.howto.step1.desc')
     },
     {
       number: '2',
-      title: t('landing.howto.step2', lang),
-      description: t('landing.howto.step2.desc', lang)
+      title: t('landing.howto.step2'),
+      description: t('landing.howto.step2.desc')
     },
     {
       number: '3',
-      title: t('landing.howto.step3', lang),
-      description: t('landing.howto.step3.desc', lang)
+      title: t('landing.howto.step3'),
+      description: t('landing.howto.step3.desc')
     }
   ];
 
@@ -51,23 +51,18 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
       <section className="hero">
         <div className="hero-wrapper">
           <div className="hero-content">
-            <div className="hero-badge">
-              <img src="/logo.jpg" alt="AssetTide" className="hero-logo" />
-              <span>{t('landing.badge', lang)}</span>
-            </div>
-
             <h1 className="hero-title">
-              {t('landing.title.1', lang)}<br />
-              <span className="hero-title-highlight">{t('landing.title.2', lang)}</span>
+              {t('landing.title.1')}<br />
+              <span className="hero-title-highlight">{t('landing.title.2')}</span>
             </h1>
 
             <p className="hero-subtitle">
-              {t('landing.subtitle', lang)}
+              {t('landing.subtitle')}
             </p>
 
             <div className="hero-cta">
               <button onClick={onLoginClick} className="btn-primary btn-large">
-                <span>{t('landing.cta.start', lang)}</span>
+                <span>{t('landing.cta.start')}</span>
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                   <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -75,32 +70,32 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
               <button className="btn-secondary btn-large" onClick={() => {
                 document.getElementById('features').scrollIntoView({ behavior: 'smooth' });
               }}>
-                {t('landing.cta.learn', lang)}
+                {t('landing.cta.learn')}
               </button>
             </div>
 
             <div className="hero-stats">
               <div className="stat">
-                <div className="stat-value">1000+</div>
-                <div className="stat-label">{t('landing.stats.items', lang)}</div>
+                <div className="stat-value">eBay</div>
+                <div className="stat-label">{t('landing.stats.items')}</div>
               </div>
               <div className="stat-divider"></div>
               <div className="stat">
-                <div className="stat-value">Real-time</div>
-                <div className="stat-label">{t('landing.stats.sync', lang)}</div>
+                <div className="stat-value">24/7</div>
+                <div className="stat-label">{t('landing.stats.sync')}</div>
               </div>
               <div className="stat-divider"></div>
               <div className="stat">
-                <div className="stat-value">Cloud</div>
-                <div className="stat-label">{t('landing.stats.storage', lang)}</div>
+                <div className="stat-value">Google</div>
+                <div className="stat-label">{t('landing.stats.storage')}</div>
               </div>
             </div>
           </div>
 
           <div className="hero-image">
             <img
-              src="/sports.jpg"
-              alt="Rôzne športové zbierky - basketbal, baseball, futbal, hokej, tenis"
+              src="/assestide.jpg"
+              alt="Assetide app - Gretzky, Charizard a Jordan karty s mobilnou aplikáciou zobrazujúcou portfólio"
               loading="eager"
               width="600"
               height="400"
@@ -117,9 +112,9 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
       <section className="features" id="features">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">{t('landing.features.title', lang)}</h2>
+            <h2 className="section-title">{t('landing.features.title')}</h2>
             <p className="section-subtitle">
-              {t('landing.features.subtitle', lang)}
+              {t('landing.features.subtitle')}
             </p>
           </div>
 
@@ -146,13 +141,13 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                   </svg>
-                  <span>{t('landing.features.list.photos', lang)}</span>
+                  <span>{t('landing.features.list.photos')}</span>
                 </li>
                 <li>
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                   </svg>
-                  <span>{t('landing.features.list.import', lang)}</span>
+                  <span>{t('landing.features.list.import')}</span>
                 </li>
                 <li>
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
@@ -164,15 +159,49 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                   </svg>
-                  <span>{t('landing.features.list.mobile', lang)}</span>
+                  <span>{t('landing.features.list.mobile')}</span>
                 </li>
                 <li>
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
                   </svg>
-                  <span>{t('landing.features.list.cloud', lang)}</span>
+                  <span>{t('landing.features.list.cloud')}</span>
                 </li>
               </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CSV Import Section */}
+      <section className="csv-import">
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">{t('landing.csv.title')}</h2>
+            <p className="section-subtitle">{t('landing.csv.subtitle')}</p>
+          </div>
+
+          <div className="csv-import-content">
+            <div className="csv-preview">
+              <div className="csv-preview-header">
+                <span>{t('landing.csv.preview.header')}</span>
+                <span className="csv-preview-hint">{t('landing.csv.preview.hint')}</span>
+              </div>
+              <div className="csv-preview-line header-line">položka</div>
+              <div className="csv-preview-line">Connor McDavid 2015-16 Upper Deck Young Guns #201</div>
+              <div className="csv-preview-line">Wayne Gretzky 1979-80 Topps #18</div>
+              <div className="csv-preview-line">Sidney Crosby 2005-06 Upper Deck Young Guns #201</div>
+              <div className="csv-preview-line">Charizard Base Set Holo #4</div>
+            </div>
+
+            <div className="csv-actions">
+              <p>{t('landing.csv.step')}</p>
+              <a href="/sample_collection.csv" download className="btn-download">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 3v10m0 0l-3.5-3.5M10 13l3.5-3.5M3 17h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {t('landing.csv.download')}
+              </a>
             </div>
           </div>
         </div>
@@ -186,7 +215,7 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
       <section className="how-it-works">
         <div className="container">
           <div className="section-header">
-            <h2 className="section-title">{t('landing.howto.title', lang)}</h2>
+            <h2 className="section-title">{t('landing.howto.title')}</h2>
             <p className="section-subtitle">
               {lang === 'en' ? 'Start collecting in 3 simple steps' : lang === 'cz' ? 'Začněte sbírat ve 3 jednoduchých krocích' : 'Začni zbierať za 3 jednoduché kroky'}
             </p>
@@ -231,36 +260,36 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
         <div className="container">
           <div className="footer-content">
             <div className="footer-brand">
-              <h3><img src="/logo.jpg" alt="AssetTide" className="footer-logo" /> {t('landing.footer.brand', lang)}</h3>
-              <p>{t('landing.footer.tagline', lang)}</p>
+              <h3><img src="/logo.jpg" alt="Assetide" className="footer-logo" /> {t('landing.footer.brand')}</h3>
+              <p>{t('landing.footer.tagline')}</p>
             </div>
             <div className="footer-links">
               <div className="footer-section">
-                <h4>{t('landing.footer.product', lang)}</h4>
+                <h4>{t('landing.footer.product')}</h4>
                 <ul>
-                  <li><a href="#features">{t('landing.footer.features', lang)}</a></li>
-                  <li><a href="#" onClick={(e) => { e.preventDefault(); onHowtoClick(); }}>{t('landing.footer.howto', lang)}</a></li>
+                  <li><a href="#features">{t('landing.footer.features')}</a></li>
+                  <li><a href="#" onClick={(e) => { e.preventDefault(); onHowtoClick(); }}>{t('landing.footer.howto')}</a></li>
                 </ul>
               </div>
               <div className="footer-section">
-                <h4>{t('landing.footer.community', lang)}</h4>
+                <h4>{t('landing.footer.community')}</h4>
                 <ul>
-                  <li><a href="#" onClick={(e) => { e.preventDefault(); onCollectorsClick(); }}>{t('landing.footer.collectors', lang)}</a></li>
+                  <li><a href="#" onClick={(e) => { e.preventDefault(); onCollectorsClick(); }}>{t('landing.footer.collectors')}</a></li>
                 </ul>
               </div>
               <div className="footer-section">
-                <h4>{t('landing.footer.legal', lang)}</h4>
+                <h4>{t('landing.footer.legal')}</h4>
                 <ul>
-                  <li><a href="#" onClick={(e) => { e.preventDefault(); onTermsClick(); }}>{t('landing.footer.terms', lang)}</a></li>
-                  <li><a href="#" onClick={(e) => { e.preventDefault(); onPrivacyClick(); }}>{t('landing.footer.privacy', lang)}</a></li>
+                  <li><a href="#" onClick={(e) => { e.preventDefault(); onTermsClick(); }}>{t('landing.footer.terms')}</a></li>
+                  <li><a href="#" onClick={(e) => { e.preventDefault(); onPrivacyClick(); }}>{t('landing.footer.privacy')}</a></li>
                 </ul>
               </div>
             </div>
           </div>
           <div className="footer-bottom">
-            <p>&copy; 2025 {t('landing.footer.brand', lang)}. {t('landing.footer.rights', lang)}</p>
+            <p>&copy; 2025 {t('landing.footer.brand')}. {t('landing.footer.rights')}</p>
             <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
-              {t('landing.footer.exchangeSource', lang)}
+              {t('landing.footer.exchangeSource')}
             </p>
             <div style={{ marginTop: '16px' }}>
               <LanguageSwitcher darkMode={false} />

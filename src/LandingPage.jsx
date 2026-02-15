@@ -67,9 +67,7 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
                   <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
-              <button className="btn-secondary btn-large" onClick={() => {
-                document.getElementById('features').scrollIntoView({ behavior: 'smooth' });
-              }}>
+              <button className="btn-secondary btn-large" onClick={onHowtoClick}>
                 {t('landing.cta.learn')}
               </button>
             </div>
@@ -209,7 +207,7 @@ function LandingPage({ onLoginClick, onCollectorsClick, onHowtoClick, onTermsCli
 
       {/* Top Cards Section */}
       <GlobalCollectionStats />
-      <TopCards />
+      <TopCards onLoginClick={onLoginClick} />
 
       {/* How it Works Section */}
       <section className="how-it-works">

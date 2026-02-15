@@ -1,26 +1,40 @@
 import { useEffect, useState } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { t, getCurrentLanguage } from '../../translations';
 
 function GlobalCollectionStats() {
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ totalCollectionValueEur: 0, totalItems: 0 });
+  const [stats, setStats] = useState({ totalValue: 0, totalItems: 0 });
   const lang = getCurrentLanguage();
 
   useEffect(() => {
-    const statsRef = doc(db, 'stats', 'global');
-    const unsubscribe = onSnapshot(statsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setStats({
-          totalCollectionValueEur: data.totalCollectionValueEur || 0,
-          totalItems: data.totalItems || 0
+    const fetchStats = async () => {
+      try {
+        const cardsRef = collection(db, 'cards');
+        const snapshot = await getDocs(cardsRef);
+
+        let totalValue = 0;
+        let totalItems = 0;
+
+        snapshot.docs.forEach(doc => {
+          const card = doc.data();
+          if (card.status === 'zbierka') {
+            const qty = card.quantity || 1;
+            totalItems += qty;
+            totalValue += (card.current || 0) * qty;
+          }
         });
+
+        setStats({ totalValue, totalItems });
+      } catch (err) {
+        console.error('GlobalCollectionStats error:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    };
+
+    fetchStats();
   }, []);
 
   const formatEur = (value) => new Intl.NumberFormat(lang === 'en' ? 'en-GB' : lang === 'cz' ? 'cs-CZ' : 'sk-SK', {
@@ -40,7 +54,7 @@ function GlobalCollectionStats() {
         <div style={styles.valueBlock}>
           <div style={styles.label}>{t('landing.globalValue.label', lang)}</div>
           <div style={styles.value}>
-            {loading ? '—' : formatEur(stats.totalCollectionValueEur)}
+            {loading ? '—' : formatEur(stats.totalValue)}
           </div>
           <div style={styles.meta}>
             {loading ? '—' : `${stats.totalItems} ${t('landing.globalValue.items', lang)}`}
@@ -104,4 +118,3 @@ const styles = {
 };
 
 export default GlobalCollectionStats;
-

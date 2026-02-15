@@ -5,6 +5,45 @@ import LandingPage from './LandingPage';
 import Login from './Login';
 import { CurrencyProvider } from './CurrencyContext';
 
+// In-app browser detection and escape utilities
+const isInAppBrowser = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return /FBAN|FBAV|FB_IAB|FBIOS|Messenger|Instagram|Line|Twitter|LinkedIn|Snapchat|Pinterest|TikTok/i.test(ua);
+};
+
+const getIOSVersion = () => {
+  const match = (navigator.userAgent || '').match(/OS (\d+)_/);
+  return match ? parseInt(match[1], 10) : 0;
+};
+
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+const isAndroid = () => /Android/i.test(navigator.userAgent || '');
+
+const escapeInAppBrowser = () => {
+  const loginUrl = 'https://assetide.com/?startLogin=1';
+
+  if (isIOS()) {
+    const ver = getIOSVersion();
+    if (ver >= 17) {
+      // iOS 17+ — x-safari-https scheme opens Safari directly
+      window.location.href = 'x-safari-' + loginUrl;
+      return true;
+    }
+    // iOS 15-16 fallback
+    window.location.href = 'com-apple-mobilesafari-tab:' + loginUrl;
+    return true;
+  }
+
+  if (isAndroid()) {
+    // Android — intent URL opens Chrome
+    window.location.href = 'intent://assetide.com/?startLogin=1#Intent;scheme=https;package=com.android.chrome;end';
+    return true;
+  }
+
+  return false;
+};
+
 // Lazy load heavy components for better initial load performance
 const CardManager = lazy(() => import('./CardManager'));
 const CollectorsPage = lazy(() => import('./CollectorsPage'));
@@ -162,7 +201,15 @@ function App() {
         {!user ? (
           <>
             <LandingPage
-              onLoginClick={() => setShowLoginModal(true)}
+              onLoginClick={() => {
+                if (isInAppBrowser()) {
+                  // Try to escape to system browser automatically
+                  const escaped = escapeInAppBrowser();
+                  if (escaped) return;
+                }
+                // Normal flow or fallback — show login modal
+                setShowLoginModal(true);
+              }}
               onCollectorsClick={() => setCurrentPage('collectors')}
               onHowtoClick={() => setCurrentPage('howto')}
               onTermsClick={() => setCurrentPage('terms')}

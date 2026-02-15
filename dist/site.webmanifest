@@ -1,6 +1,6 @@
 {
-  "name": "AssetTide",
-  "short_name": "AssetTide",
+  "name": "Assetide",
+  "short_name": "Assetide",
   "description": "Správa zbierky s automatickou aktualizáciou cien",
   "start_url": "/",
   "display": "standalone",

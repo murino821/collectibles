@@ -44,17 +44,17 @@ function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'collectors', 'howto', 'terms', 'privacy'
 
+  // Handle ?startLogin=1 param (from in-app browser redirect)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const ua = navigator.userAgent || '';
-      const isInApp = /FBAN|FBAV|FB_IAB|Messenger|Instagram|Line|Twitter|LinkedIn|Snapchat|Pinterest|TikTok/i.test(ua);
-      if (isInApp && window.location.hostname === 'your-card-collection-2026.web.app') {
-        const nextUrl = `https://your-card-collection-2026.firebaseapp.com${window.location.pathname}${window.location.search}${window.location.hash}`;
-        window.location.replace(nextUrl);
-        return;
-      }
+    if (loading || user) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('startLogin') === '1') {
+      setShowLoginModal(true);
+      window.history.replaceState({}, '', window.location.pathname);
     }
+  }, [user, loading]);
 
+  useEffect(() => {
     if (isMockAuth) {
       setUser({
         uid: 'mock-user',

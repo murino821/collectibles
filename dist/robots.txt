@@ -1,4 +1,4 @@
-# AssetTide - robots.txt
+# Assetide - robots.txt
 # https://assetide.com/
 
 User-agent: *

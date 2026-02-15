@@ -181,6 +181,93 @@
   }
 }
 
+/* In-App Browser Banner */
+.inapp-browser-banner {
+  text-align: center;
+  padding: 0.5rem 0 0;
+}
+
+.inapp-browser-banner .inapp-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.inapp-browser-banner h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 0.75rem;
+}
+
+.inapp-browser-banner p {
+  font-size: 0.875rem;
+  color: #64748b;
+  line-height: 1.6;
+  margin: 0 0 1.5rem;
+}
+
+.inapp-browser-banner .inapp-instruction {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+}
+
+.open-browser-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.5rem;
+  background: #4285f4;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
+  width: 100%;
+  max-width: 320px;
+  text-decoration: none;
+  margin-bottom: 0.75rem;
+}
+
+.open-browser-button:hover {
+  background: #357ae8;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
+}
+
+.copy-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  max-width: 320px;
+}
+
+.copy-link-button:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.copy-link-button.copied {
+  background: #dcfce7;
+  color: #16a34a;
+  border-color: #bbf7d0;
+}
+
 /* Desktop styles */
 @media (min-width: 640px) {
   .login-modal {

@@ -12,7 +12,7 @@ import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-ch
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBlAhlya-NNp8gCxGPBIPxxCgDa6l9AXo8",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "your-card-collection-2026.firebaseapp.com",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "assetide.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "your-card-collection-2026",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "your-card-collection-2026.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "620171462959",

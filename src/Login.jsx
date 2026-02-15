@@ -58,12 +58,6 @@ function Login({ isOpen, onClose }) {
     setIsLoading(true);
     try {
       await ensureAuthPersistence();
-      if (isMobile()) {
-        setError('');
-        await signInWithRedirect(auth, googleProvider);
-        return;
-      }
-
       await signInWithPopup(auth, googleProvider);
       setError('');
       if (onClose) onClose();

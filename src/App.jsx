@@ -39,20 +39,29 @@ function App() {
   const isMockAuth = import.meta.env.DEV && (
     mockAuthQuery === '1' || (mockAuthQuery !== '0' && import.meta.env.VITE_MOCK_AUTH === '1')
   );
+  // Check for special URL params immediately (from in-app browser redirect)
+  const [startLoginRequested] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const startLogin = params.get('startLogin') === '1';
+    // Clean up utility params from URL
+    if (startLogin || params.has('openExternalBrowser')) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    return startLogin;
+  });
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'collectors', 'howto', 'terms', 'privacy'
 
-  // Handle ?startLogin=1 param (from in-app browser redirect)
+  // Open login modal when startLogin was requested and loading is done
   useEffect(() => {
-    if (loading || user) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('startLogin') === '1') {
+    if (startLoginRequested && !loading && !user) {
       setShowLoginModal(true);
-      window.history.replaceState({}, '', window.location.pathname);
     }
-  }, [user, loading]);
+  }, [startLoginRequested, loading, user]);
 
   useEffect(() => {
     if (isMockAuth) {

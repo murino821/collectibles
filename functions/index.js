@@ -828,6 +828,60 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
       if (!adminsSnapshot.empty) {
         await batch.commit();
         console.log(`📬 Notified ${adminsSnapshot.size} admin(s) about new user ${user.uid}`);
+
+        // Send email to admins
+        const gmailUser = process.env.GMAIL_USER;
+        const gmailPass = process.env.GMAIL_APP_PASSWORD;
+        if (gmailUser && gmailPass) {
+          const transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: {user: gmailUser, pass: gmailPass},
+          });
+          const displayName = user.displayName || "Neznámy";
+          const email = user.email || "bez emailu";
+          const html = `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 500px; margin: 0 auto; background: #0f172a; color: #e2e8f0; border-radius: 12px; overflow: hidden;">
+              <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 24px; text-align: center;">
+                <h1 style="margin: 0; font-size: 20px; color: white;">Assetide</h1>
+                <p style="margin: 8px 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">Nová registrácia</p>
+              </div>
+              <div style="padding: 24px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #94a3b8;">Meno</td>
+                    <td style="padding: 8px 0; text-align: right; font-weight: bold;">${displayName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #94a3b8;">Email</td>
+                    <td style="padding: 8px 0; text-align: right;">${email}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #94a3b8;">Rola</td>
+                    <td style="padding: 8px 0; text-align: right;">Standard</td>
+                  </tr>
+                </table>
+                <div style="text-align: center; margin-top: 24px;">
+                  <a href="https://assetide.com/admin_panel.html" style="display: inline-block; background: #6366f1; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold;">Otvoriť Admin Panel</a>
+                </div>
+              </div>
+              <div style="padding: 16px 24px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #1e293b;">
+                Assetide &mdash; Správa zbierky a sledovanie hodnoty
+              </div>
+            </div>
+          `;
+          for (const adminDoc of adminsSnapshot.docs) {
+            const adminData = adminDoc.data();
+            if (adminData.emailNotifications !== false && adminData.email) {
+              await transporter.sendMail({
+                from: `"Assetide" <${gmailUser}>`,
+                to: adminData.email,
+                subject: `Nový používateľ: ${displayName} (${email})`,
+                html,
+              }).catch((err) => console.error("Admin email error:", err.message));
+            }
+          }
+          console.log(`📧 Email sent to admin(s) about new user`);
+        }
       }
     } catch (notifError) {
       console.error("Error notifying admins about new user:", notifError.message);

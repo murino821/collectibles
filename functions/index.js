@@ -802,6 +802,36 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
     });
 
     console.log(`✅ User ${user.uid} initialized with schedule: Day ${dayOfMonth}, Hour ${hour}`);
+
+    // Notify all admins about new user registration
+    try {
+      const adminsSnapshot = await db.collection("users").where("role", "==", "admin").get();
+      const batch = db.batch();
+      adminsSnapshot.forEach((adminDoc) => {
+        const notifRef = db.collection("notifications").doc();
+        batch.set(notifRef, {
+          userId: adminDoc.id,
+          type: "new_user",
+          title: "Nový používateľ",
+          message: `Zaregistroval sa ${user.displayName || user.email || "neznámy používateľ"} (${user.email || "bez emailu"})`,
+          read: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          actionType: "new_user",
+          actionData: {
+            uid: user.uid,
+            email: user.email || null,
+            displayName: user.displayName || null,
+          },
+        });
+      });
+      if (!adminsSnapshot.empty) {
+        await batch.commit();
+        console.log(`📬 Notified ${adminsSnapshot.size} admin(s) about new user ${user.uid}`);
+      }
+    } catch (notifError) {
+      console.error("Error notifying admins about new user:", notifError.message);
+    }
   } catch (error) {
     console.error("Error creating user document:", error);
     // Don't throw - user can still use the app

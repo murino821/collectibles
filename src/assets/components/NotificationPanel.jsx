@@ -197,6 +197,8 @@ function NotificationPanel({ user, darkMode, onClose, isMockAuth = false, mockNo
                 }}>
                   {notif.type === 'price_update_complete' && '✅'}
                   {notif.type === 'price_update_failed' && '❌'}
+                  {notif.type === 'new_user' && '👤'}
+                  {notif.type === 'limit_exceeded' && '⚠️'}
                   {notif.type === 'system' && 'ℹ️'}
                 </div>
                 <div style={{ flex: 1 }}>

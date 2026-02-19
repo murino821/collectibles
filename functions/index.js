@@ -1600,6 +1600,40 @@ exports.onCardCreateV2 = onDocumentCreated("cards/{cardId}", async (event) => {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         actionType: "upgrade_premium",
       });
+
+      return null; // Card was deleted, skip pricing
+    }
+
+    // Auto-price the new card via eBay search
+    if (cardData.item) {
+      try {
+        const fxRates = await getLatestExchangeRates();
+        const textResponse = await searchEbayCardWithDebug(cardData.item, fxRates, {
+          categoryId: cardData.ebayCategory || null,
+        });
+
+        if (textResponse?.results?.length > 0) {
+          const priceInfo = calculateEstimatedPriceDetailed(textResponse.results);
+          if (priceInfo?.price) {
+            await snap.ref.update({
+              current: priceInfo.price,
+              lastPriceUpdate: admin.firestore.FieldValue.serverTimestamp(),
+              priceSource: "ebay",
+              ebayPriceSource: true,
+              ebaySearchMode: "text",
+              priceHistory: admin.firestore.FieldValue.arrayUnion({
+                date: new Date(),
+                price: priceInfo.price,
+                source: "ebay",
+              }),
+              ...(priceInfo.confidence != null ? {priceConfidence: priceInfo.confidence} : {}),
+            });
+            console.log(`💰 Auto-priced new card "${cardData.item}": €${priceInfo.price}`);
+          }
+        }
+      } catch (priceError) {
+        console.error(`⚠️ Auto-pricing failed for "${cardData.item}":`, priceError.message);
+      }
     }
 
     return null;

@@ -83,8 +83,7 @@ function HowItWorksPage({ onBack }) {
       features: [
         t('howto.plan.premium.f1'),
         t('howto.plan.premium.f2'),
-        t('howto.plan.premium.f3'),
-        t('howto.plan.premium.f4')
+        t('howto.plan.premium.f3')
       ]
     },
     {

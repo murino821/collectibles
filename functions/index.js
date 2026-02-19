@@ -738,14 +738,14 @@ exports.onUserCreate = functions.auth.user().onCreate(async (user) => {
     const userRole = "standard";
 
     // Role-based configuration
-    // Standard users: NO eBay price updates (manual entry only)
-    // Premium/Admin: Automatic eBay price updates
+    // Standard users: eBay price updates 1x per month + on card creation
+    // Premium/Admin: eBay price updates every 15 days + on card creation
     const roleConfig = {
       standard: {
-        cardLimit: 20,
-        updateIntervalDays: 0, // No automatic eBay updates
-        updatesPerMonth: 0, // No eBay updates - manual price entry only
-        ebayUpdatesEnabled: false,
+        cardLimit: 100,
+        updateIntervalDays: 30, // 1x per month
+        updatesPerMonth: 1,
+        ebayUpdatesEnabled: true,
       },
       premium: {
         cardLimit: 999999, // unlimited
@@ -1361,7 +1361,7 @@ exports.updateUserRoleV2 = onCall(async (request) => {
 
   try {
     const roleConfig = {
-      standard: {cardLimit: 20, updateIntervalDays: 0, updatesPerMonth: 0, ebayUpdatesEnabled: false},
+      standard: {cardLimit: 100, updateIntervalDays: 30, updatesPerMonth: 1, ebayUpdatesEnabled: true},
       premium: {cardLimit: 999999, updateIntervalDays: 15, updatesPerMonth: 2, ebayUpdatesEnabled: true},
       admin: {cardLimit: 999999, updateIntervalDays: 15, updatesPerMonth: 2, ebayUpdatesEnabled: true},
     };
@@ -1570,7 +1570,7 @@ exports.onCardCreateV2 = onDocumentCreated("cards/{cardId}", async (event) => {
     }
 
     const userData = userDoc.data();
-    const cardLimit = userData.cardLimit || 20;
+    const cardLimit = userData.cardLimit || 100;
 
     const cardsSnapshot = await db.collection("cards")
         .where("userId", "==", userId)

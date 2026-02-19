@@ -346,7 +346,9 @@ function extractSignals(cardName) {
   const yearRangeMatch = normalized.match(/\b(19|20)\d{2}\s*[-/]\s*\d{2}\b/);
   const yearMatch = normalized.match(/\b(19|20)\d{2}\b/);
   const cardNumberMatch = normalized.match(/#\s*(\d{1,4})\b/) || normalized.match(/\bno\.?\s*(\d{1,4})\b/);
-  const serialMatch = normalized.match(/\/\s*(\d{2,4})\b/);
+  // Serial detection: strip year ranges first to avoid matching "16" from "2015/16"
+  const withoutYearRanges = normalized.replace(/\b(19|20)\d{2}\s*[-/]\s*\d{2,4}\b/g, " ");
+  const serialMatch = withoutYearRanges.match(/\/\s*(\d{2,4})\b/);
   const gradeMatch = normalized.match(/\b(psa|bgs|sgc|cgc)\s*(10|9\.5|9|8\.5|8|7|6|5)\b/);
 
   const phrases = PHRASE_KEYWORDS.filter((phrase) => normalized.includes(phrase));
@@ -365,7 +367,8 @@ function extractSignals(cardName) {
   }
   const playerKeyToken = playerTokens.length ? playerTokens[playerTokens.length - 1] : null;
 
-  const yearRange = yearRangeMatch ? yearRangeMatch[0].replace(/\s+/g, "") : null;
+  // Normalize year format: "2015/16" → "2015-16" (eBay understands dashes better)
+  const yearRange = yearRangeMatch ? yearRangeMatch[0].replace(/\s+/g, "").replace("/", "-") : null;
   const year = yearMatch ? yearMatch[0] : null;
   const cardNumber = cardNumberMatch ? cardNumberMatch[1] : null;
   const serial = serialMatch ? serialMatch[1] : null;
@@ -453,6 +456,8 @@ function buildSearchQueries(signals) {
   const yearToken = signals.yearRange || signals.year || null;
   const phraseTokens = signals.phrases || [];
   const gradeTokens = signals.grade ? signals.grade.split(" ") : [];
+  // Include print run (e.g. "/25") in queries for limited cards
+  const serialToken = signals.serial ? `/${signals.serial}` : null;
 
   // Add first name for disambiguation if available
   const playerParts = signals.playerFirstName
@@ -464,12 +469,14 @@ function buildSearchQueries(signals) {
     yearToken,
     ...phraseTokens,
     signals.cardNumber,
+    serialToken,
     ...gradeTokens,
   ]);
   const balanced = buildQueryString([
     ...playerParts,
     yearToken,
     ...phraseTokens,
+    serialToken,
     "card",
   ]);
   const loose = buildQueryString([

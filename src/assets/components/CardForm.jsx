@@ -52,10 +52,20 @@ export default function CardForm({ initial, onSubmit, onCancel }) {
     onSubmit(payload, file);
   }
 
+  const itemWords = form.item.trim().split(/\s+/).filter(Boolean);
+  const isGenericName = form.item.trim().length > 0 && itemWords.length <= 2;
+
   return (
     <form onSubmit={submit} style={{display:"grid",gap:12, marginBottom:16}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr", gap:12}}>
-        <Input label="Položka"  name="item" value={form.item} onChange={handleChange}/>
+        <div style={{display:"grid",gap:6,fontSize:12,color:"#475569"}}>
+          <Input label="Položka"  name="item" value={form.item} onChange={handleChange}/>
+          {isGenericName && (
+            <div style={{padding:"6px 10px",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,fontSize:11,color:"#92400e",lineHeight:1.4}}>
+              Pridaj viac detailov (ročník, edíciu, číslo karty) pre presnejšie určenie ceny z eBay.
+            </div>
+          )}
+        </div>
         <Select label="Stav" name="status" value={form.status} onChange={handleChange}
           options={[["zbierka","zbierka"],["predaná","predaná"]]} />
         <Input label={`Nákupná cena (${currency})`} name="buy" value={form.buy} onChange={handleChange} type="number" step="0.01"/>
